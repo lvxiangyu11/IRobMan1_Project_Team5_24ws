@@ -73,27 +73,91 @@ def load_obj_models(obj_dir, spacing=1.0):
             models.append(model)
     return models
 
-def match_point_cloud_with_models(pointcloud, models, max_distance=0.5):
+def match_multiple_instances(pointcloud, model, max_distance=0.5, min_fitness=0.3, max_iterations=10):
     """
-    使用 ICP 算法匹配点云与模型
+    匹配点云中同一模型的多个实例
     :param pointcloud: 待匹配的点云
-    :param models: OBJ 模型的点云
+    :param model: 单一模型的点云
     :param max_distance: ICP 的最大对应点距离
-    :return: 匹配结果列表，每个结果包含模型名称和匹配分数
+    :param min_fitness: 最低匹配分数阈值，低于此值不认为是匹配
+    :param max_iterations: 最大迭代次数（找到实例的数量上限）
+    :return: 匹配结果列表，每个结果包含平移向量、旋转矩阵和匹配分数
     """
+    remaining_cloud = pointcloud
     results = []
-    for i, model in enumerate(models):
+
+    for iteration in range(max_iterations):
         try:
+            # 使用 ICP 算法进行点云匹配
             reg = o3d.pipelines.registration.registration_icp(
-                pointcloud, model, max_distance,
+                remaining_cloud, model, max_distance,
                 np.eye(4),
                 o3d.pipelines.registration.TransformationEstimationPointToPoint()
             )
-            print(f"模型 {i} 匹配分数: {reg.fitness}")
-            results.append((f"Model_{i}", reg.fitness))
+            
+            if reg.fitness < min_fitness:
+                print(f"第 {iteration + 1} 次匹配结束：匹配分数 {reg.fitness:.4f} 低于阈值 {min_fitness}")
+                break
+            
+            # 提取 ICP 结果的变换矩阵
+            transformation = reg.transformation
+            rotation_matrix = transformation[:3, :3]  # 旋转矩阵
+            translation_vector = transformation[:3, 3]  # 平移向量
+            
+            print(f"第 {iteration + 1} 次匹配成功: 匹配分数 = {reg.fitness:.4f}")
+            print(f"位置 (平移向量): {translation_vector}")
+            print(f"姿态 (旋转矩阵):\n{rotation_matrix}")
+            
+            results.append({
+                "instance_id": iteration + 1,
+                "fitness_score": reg.fitness,
+                "rotation_matrix": rotation_matrix,
+                "translation_vector": translation_vector
+            })
+            
+            # 从剩余点云中移除匹配到的部分
+            distance_threshold = max_distance
+            distances = model.compute_point_cloud_distance(
+                remaining_cloud.transform(transformation)
+            )
+            remaining_indices = [i for i, d in enumerate(distances) if d > distance_threshold]
+            remaining_cloud = remaining_cloud.select_by_index(remaining_indices)
+            
+            if len(remaining_cloud.points) == 0:
+                print("剩余点云为空，匹配结束")
+                break
         except Exception as e:
-            print(f"匹配模型 {i} 出错: {e}")
-    return sorted(results, key=lambda x: x[1], reverse=True)
+            print(f"匹配过程出错: {e}")
+            break
+    
+    return results
+
+
+def match_point_cloud_with_models(pointcloud, models, max_distance=0.5, min_fitness=0.3, max_iterations=10):
+    """
+    匹配点云与多个模型，包括场景中同一模型的多个实例
+    :param pointcloud: 待匹配的点云
+    :param models: 多个模型的点云列表
+    :param max_distance: ICP 的最大对应点距离
+    :param min_fitness: 最低匹配分数阈值，低于此值不认为是匹配
+    :param max_iterations: 最大迭代次数（每个模型的实例数量上限）
+    :return: 匹配结果列表，每个结果包含模型名称、实例 ID、平移向量、旋转矩阵和匹配分数
+    """
+    all_results = []
+    
+    for model_idx, model in enumerate(models):
+        print(f"\n开始匹配模型 {model_idx} ({len(model.points)} 点)")
+        model_results = match_multiple_instances(
+            pointcloud, model, max_distance, min_fitness, max_iterations
+        )
+        
+        # 为每个匹配结果添加模型信息
+        for result in model_results:
+            result["model_name"] = f"Model_{model_idx}"
+            all_results.append(result)
+    
+    return all_results
+
 
 def visualize_scene(pointcloud, models, coordinate_frame_size=0.5, origin=[0, 0, 0]):
     """
@@ -199,19 +263,26 @@ def main():
 
     # 加载点云
     pointcloud = load_point_cloud(pointcloud_path)
-    pointcloud2 = load_point_cloud(pointcloud_path2)
 
     # 使用 Open3D 加载 OBJ 模型并添加距离
     models = load_obj_models(obj_dir)
     
     # 匹配点云和模型
     print("开始匹配点云和模型...")
-    match_results = match_point_cloud_with_models(pointcloud, models)
+    results = match_point_cloud_with_models(pointcloud, models, max_distance=0.5)
     print("\n匹配结果:")
-    for model_name, score in match_results:
-        print(f"{model_name}: 匹配分数 = {score:.4f}")
+
+    # 打印结果
+    for result in results:
+        print(f"\n模型: {result['model_name']} - 实例 ID: {result['instance_id']}")
+        print(f"匹配分数: {result['fitness_score']:.4f}")
+        print(f"位置 (平移向量): {result['translation_vector']}")
+        print(f"姿态 (旋转矩阵):\n{result['rotation_matrix']}")
 
     models = move_models(models, [0.1, 0, 0.6])
+
+    pointcloud = load_point_cloud(pointcloud_path)
+    pointcloud2 = load_point_cloud(pointcloud_path2)
     # 可视化点云和模型
     visualize_scene(pointcloud, models)
     visualize_scene(pointcloud2, models)
