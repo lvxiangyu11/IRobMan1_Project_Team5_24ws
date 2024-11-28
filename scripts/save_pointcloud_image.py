@@ -24,9 +24,9 @@ class DepthColorImageSaver:
         self.bridge = CvBridge()
         
         # 保存路径
-        self.depth_save_dir = "./tmp/depths"
-        self.color_save_dir = "./tmp/colors"
-        self.csv_file = "./tmp/image_tf_record.csv"
+        self.depth_save_dir = "/opt/ros_ws/tmp/depths"
+        self.color_save_dir = "/opt/ros_ws/tmp/colors"
+        self.csv_file = "/opt/ros_ws/tmp/image_tf_record.csv"
 
         # 创建目录
         if not os.path.exists(self.depth_save_dir):
@@ -39,6 +39,13 @@ class DepthColorImageSaver:
 
     def save_depth_image(self, msg):
         try:
+            # 获取TF转换以获得时间戳
+            tf_data = self.get_transform('world', 'left_camera_link')
+            if tf_data is None:
+                return
+
+            timestamp = tf_data.header.stamp  # 使用TF的时间戳
+
             # 将深度图像转换为 OpenCV 格式
             depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
@@ -46,35 +53,50 @@ class DepthColorImageSaver:
             if depth_image.dtype == np.float32:
                 depth_image = (depth_image * 1000).astype(np.uint16)  # 转换为毫米单位
 
-            # 生成文件名并保存深度图像
-            depth_filename = f"depth_{rospy.get_time()}.png"
+            # 使用时间戳生成文件名
+            depth_filename = f"depth_{timestamp.to_nsec()}.png"
             depth_filepath = os.path.join(self.depth_save_dir, depth_filename)
+
+            # 如果文件已存在，替换文件
+            if os.path.exists(depth_filepath):
+                os.remove(depth_filepath)
+
+            # 保存图像
             cv2.imwrite(depth_filepath, depth_image)
             rospy.loginfo(f"Depth image saved to {depth_filepath}")
 
-            # 获取对应的 TF 转换
-            tf_data = self.get_transform('world', 'left_camera_link')
-            if tf_data is not None:
-                self.save_tf_to_csv(depth_filename, tf_data)
+            # 保存TF信息到CSV
+            self.save_tf_to_csv(depth_filename, tf_data)
 
         except Exception as e:
             rospy.logerr(f"Failed to save depth image: {e}")
 
     def save_color_image(self, msg):
         try:
+            # 获取TF转换以获得时间戳
+            tf_data = self.get_transform('world', 'left_camera_link')
+            if tf_data is None:
+                return
+
+            timestamp = tf_data.header.stamp  # 使用TF的时间戳
+
             # 将彩色图像转换为 OpenCV 格式
             color_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
-            # 生成文件名并保存彩色图像
-            color_filename = f"color_{rospy.get_time()}.png"
+            # 使用时间戳生成文件名
+            color_filename = f"color_{timestamp.to_nsec()}.png"
             color_filepath = os.path.join(self.color_save_dir, color_filename)
+
+            # 如果文件已存在，替换文件
+            if os.path.exists(color_filepath):
+                os.remove(color_filepath)
+
+            # 保存图像
             cv2.imwrite(color_filepath, color_image)
             rospy.loginfo(f"Color image saved to {color_filepath}")
 
-            # 获取对应的 TF 转换
-            tf_data = self.get_transform('world', 'left_camera_link')
-            if tf_data is not None:
-                self.save_tf_to_csv(color_filename, tf_data)
+            # 保存TF信息到CSV
+            self.save_tf_to_csv(color_filename, tf_data)
 
         except Exception as e:
             rospy.logerr(f"Failed to save color image: {e}")
