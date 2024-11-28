@@ -103,10 +103,11 @@ class PointCloudSaver:
         translation = np.array([transform.transform.translation.x,
                                  transform.transform.translation.y,
                                  transform.transform.translation.z])
-        rotation = np.array([transform.transform.rotation.x,
+        rotation = np.array([transform.transform.rotation.w,
+                             transform.transform.rotation.x,
                              transform.transform.rotation.y,
                              transform.transform.rotation.z,
-                             transform.transform.rotation.w])
+                             ])
 
         # 转换为4x4变换矩阵
         transformation_matrix = np.eye(4)
@@ -132,7 +133,7 @@ class PointCloudSaver:
         rospy.loginfo(f"Original point cloud saved to {original_path}")
 
         # 获取变换
-        transform = self.get_transform('world', 'left_camera_link')
+        transform = self.get_transform('world', 'left_camera_link_optical')
         if transform is None:
             rospy.logerr("Failed to get transform to world frame!")
             return
@@ -151,6 +152,6 @@ if __name__ == "__main__":
     rospy.sleep(2)  # 等待话题数据发布
 
     # 保存点云
-    original_file = "/opt/ros_ws/tmp/zed_point_cloud.ply"
-    world_file = "/opt/ros_ws/tmp/zed_point_cloud_world.ply"
+    original_file = "/opt/ros_ws/tmp/zed_point_cloud2.ply"
+    world_file = "/opt/ros_ws/tmp/zed_point_cloud_world2.ply"
     point_cloud_saver.save_point_clouds(original_file, world_file)
