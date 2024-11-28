@@ -1,59 +1,130 @@
 import rospy
-from sensor_msgs.msg import PointCloud2, Image
-import sensor_msgs.point_cloud2 as pc2
-import open3d as o3d
-import cv2
+import tf2_ros
+from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+import numpy as np
+import cv2
 import os
+import csv
+from tf2_geometry_msgs import do_transform_pose
 
-class DataSaver:
+
+class DepthColorImageSaver:
     def __init__(self):
-        rospy.init_node('data_saver', anonymous=True)
+        rospy.init_node('depth_color_image_saver', anonymous=True)
 
-        # 订阅点云和图像
-        rospy.Subscriber('/zed2/zed_node/depth/depth_registered', PointCloud2, self.save_pointcloud)
-        rospy.Subscriber('/zed2/zed_node/left/image_rect_color', Image, self.save_image)
-
+        # 订阅深度图像和彩色图像
+        rospy.Subscriber('/zed2/zed_node/depth/depth_registered', Image, self.save_depth_image)
+        rospy.Subscriber('/zed2/zed_node/left/image_rect_color', Image, self.save_color_image)
+        
+        # 订阅 tf 信息
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        
         self.bridge = CvBridge()
-        self.image_saved = False
-        self.pointcloud_saved = False
+        
+        # 保存路径
+        self.depth_save_dir = "./tmp/depths"
+        self.color_save_dir = "./tmp/colors"
+        self.csv_file = "./tmp/image_tf_record.csv"
 
-        # 确保目录存在
-        self.save_dir = "/opt/ros_ws/tmp"
-        if not os.path.exists(self.save_dir):
-            os.makedirs(self.save_dir)
+        # 创建目录
+        if not os.path.exists(self.depth_save_dir):
+            os.makedirs(self.depth_save_dir)
+        if not os.path.exists(self.color_save_dir):
+            os.makedirs(self.color_save_dir)
 
-    def save_pointcloud(self, msg):
-        if not self.pointcloud_saved:
-            # 解析点云数据
-            points = []
-            for point in pc2.read_points(msg, skip_nans=True):
-                points.append([point[0], point[1], point[2]])
+        # CSV 文件初始化
+        self.csv_initialized = False
 
-            # 使用 Open3D 保存点云
-            cloud = o3d.geometry.PointCloud()
-            cloud.points = o3d.utility.Vector3dVector(points)
-            filepath = os.path.join(self.save_dir, 'pointcloud.pcd')
-            o3d.io.write_point_cloud(filepath, cloud)
-            rospy.loginfo(f"PointCloud saved to {filepath}")
+    def save_depth_image(self, msg):
+        try:
+            # 将深度图像转换为 OpenCV 格式
+            depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
-            self.pointcloud_saved = True
+            # 确保深度图是 16 位灰度图或转换为 16 位
+            if depth_image.dtype == np.float32:
+                depth_image = (depth_image * 1000).astype(np.uint16)  # 转换为毫米单位
 
-    def save_image(self, msg):
-        if not self.image_saved:
-            # 转换 ROS 图像为 OpenCV 格式
-            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            # 生成文件名并保存深度图像
+            depth_filename = f"depth_{rospy.get_time()}.png"
+            depth_filepath = os.path.join(self.depth_save_dir, depth_filename)
+            cv2.imwrite(depth_filepath, depth_image)
+            rospy.loginfo(f"Depth image saved to {depth_filepath}")
 
-            # 保存图像为 PNG
-            filepath = os.path.join(self.save_dir, 'image.png')
-            cv2.imwrite(filepath, cv_image)
-            rospy.loginfo(f"Image saved to {filepath}")
+            # 获取对应的 TF 转换
+            tf_data = self.get_transform('world', 'left_camera_link')
+            if tf_data is not None:
+                self.save_tf_to_csv(depth_filename, tf_data)
 
-            self.image_saved = True
+        except Exception as e:
+            rospy.logerr(f"Failed to save depth image: {e}")
+
+    def save_color_image(self, msg):
+        try:
+            # 将彩色图像转换为 OpenCV 格式
+            color_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+
+            # 生成文件名并保存彩色图像
+            color_filename = f"color_{rospy.get_time()}.png"
+            color_filepath = os.path.join(self.color_save_dir, color_filename)
+            cv2.imwrite(color_filepath, color_image)
+            rospy.loginfo(f"Color image saved to {color_filepath}")
+
+            # 获取对应的 TF 转换
+            tf_data = self.get_transform('world', 'left_camera_link')
+            if tf_data is not None:
+                self.save_tf_to_csv(color_filename, tf_data)
+
+        except Exception as e:
+            rospy.logerr(f"Failed to save color image: {e}")
+
+    def get_transform(self, from_frame, to_frame):
+        try:
+            # 获取从from_frame到to_frame的变换
+            rospy.loginfo(f"Requesting transform from {from_frame} to {to_frame}...")
+
+            # 查询变换
+            transform = self.tf_buffer.lookup_transform(from_frame, to_frame, rospy.Time(0), rospy.Duration(1.0))  # 设置超时为1秒
+            
+            rospy.loginfo(f"Transform found: {transform}")
+
+            # 返回TransformStamped对象
+            return transform
+
+        except (tf2_ros.TransformException) as e:
+            rospy.logerr(f"Could not get transform from {from_frame} to {to_frame}: {e}")
+            return None
+
+    def save_tf_to_csv(self, filename, tf_data):
+        try:
+            # 打开CSV文件
+            if not self.csv_initialized:
+                with open(self.csv_file, mode='w', newline='') as file:
+                    writer = csv.writer(file)
+                    # 写入表头
+                    writer.writerow(['Image Filename', 'TF Translation X', 'TF Translation Y', 'TF Translation Z', 'TF Rotation X', 'TF Rotation Y', 'TF Rotation Z', 'TF Rotation W'])
+
+                self.csv_initialized = True
+
+            # 获取TF转换信息
+            translation = tf_data.transform.translation
+            rotation = tf_data.transform.rotation
+
+            # 将数据写入CSV文件
+            with open(self.csv_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([filename, translation.x, translation.y, translation.z, rotation.x, rotation.y, rotation.z, rotation.w])
+
+            rospy.loginfo(f"TF data saved for {filename} in CSV file.")
+
+        except Exception as e:
+            rospy.logerr(f"Failed to save TF data to CSV: {e}")
 
     def run(self):
         rospy.spin()
 
+
 if __name__ == '__main__':
-    saver = DataSaver()
+    saver = DepthColorImageSaver()
     saver.run()
