@@ -4,11 +4,9 @@ import rospy
 import cv2
 import numpy as np
 import tf2_ros
-import tf2_geometry_msgs
 import open3d as o3d
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
-from geometry_msgs.msg import TransformStamped
 
 
 class PointCloudSaver:
@@ -29,19 +27,6 @@ class PointCloudSaver:
         rospy.Subscriber("/zed2/zed_node/left/image_rect_color", Image, self.image_callback)
         rospy.Subscriber("/zed2/zed_node/depth/camera_info", CameraInfo, self.camera_info_callback)
 
-    def get_transform(self, from_frame, to_frame):
-        """
-        获取TF变换
-        """
-        try:
-            rospy.loginfo(f"Requesting transform from {from_frame} to {to_frame}...")
-            transform = self.tf_buffer.lookup_transform(from_frame, to_frame, rospy.Time(0), rospy.Duration(1.0))
-            rospy.loginfo(f"Transform found: {transform}")
-            return transform
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-            rospy.logerr(f"Could not get transform from {from_frame} to {to_frame}: {e}")
-            return None
-
     def camera_info_callback(self, msg):
         self.camera_info = msg
 
@@ -56,6 +41,19 @@ class PointCloudSaver:
             self.color_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
             rospy.logerr(f"Error converting color image: {e}")
+
+    def get_transform(self, from_frame, to_frame):
+        """
+        获取从 from_frame 到 to_frame 的变换
+        """
+        try:
+            rospy.loginfo(f"Requesting transform from {from_frame} to {to_frame}...")
+            transform = self.tf_buffer.lookup_transform(from_frame, to_frame, rospy.Time(0), rospy.Duration(1.0))
+            rospy.loginfo(f"Transform found: {transform}")
+            return transform
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logerr(f"Could not get transform from {from_frame} to {to_frame}: {e}")
+            return None
 
     def generate_point_cloud(self):
         """
@@ -77,7 +75,7 @@ class PointCloudSaver:
 
         for v in range(self.depth_image.shape[0]):
             for u in range(self.depth_image.shape[1]):
-                z = self.depth_image[v, u] / 1000.0  # 将深度从毫米转换为米
+                z = self.depth_image[v, u] / 1.0  # rescale
                 if z > 0:  # 过滤无效的深度值
                     x = (u - cx) * z / fx
                     y = (v - cy) * z / fy
@@ -119,9 +117,9 @@ class PointCloudSaver:
         point_cloud.transform(transformation_matrix)
         return point_cloud
 
-    def save_point_cloud(self, file_path):
+    def save_point_clouds(self, original_path, world_path):
         """
-        保存点云到文件
+        保存原始点云和转换到世界坐标系的点云
         """
         # 生成点云
         point_cloud = self.generate_point_cloud()
@@ -129,18 +127,20 @@ class PointCloudSaver:
             rospy.logerr("Failed to generate point cloud!")
             return
 
+        # 保存原始点云
+        o3d.io.write_point_cloud(original_path, point_cloud)
+        rospy.loginfo(f"Original point cloud saved to {original_path}")
+
         # 获取变换
         transform = self.get_transform('world', 'left_camera_link')
         if transform is None:
             rospy.logerr("Failed to get transform to world frame!")
             return
 
-        # 转换点云到世界坐标系
+        # 转换点云到世界坐标系并保存
         transformed_point_cloud = self.transform_point_cloud(point_cloud, transform)
-
-        # 保存到文件
-        o3d.io.write_point_cloud(file_path, transformed_point_cloud)
-        rospy.loginfo(f"Point cloud saved to {file_path}")
+        o3d.io.write_point_cloud(world_path, transformed_point_cloud)
+        rospy.loginfo(f"Transformed point cloud saved to {world_path}")
 
 
 if __name__ == "__main__":
@@ -151,5 +151,6 @@ if __name__ == "__main__":
     rospy.sleep(2)  # 等待话题数据发布
 
     # 保存点云
-    output_file = "/opt/ros_ws/tmp/zed_point_cloud_world.ply"
-    point_cloud_saver.save_point_cloud(output_file)
+    original_file = "/opt/ros_ws/tmp/zed_point_cloud.ply"
+    world_file = "/opt/ros_ws/tmp/zed_point_cloud_world.ply"
+    point_cloud_saver.save_point_clouds(original_file, world_file)
