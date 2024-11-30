@@ -1,0 +1,61 @@
+
+newmtl mat0
+Ns 250
+Ka 1.0 1.0 1.0
+Kd 0.61961 0.50588 0.44314
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+
+newmtl mat1
+Ns 250
+Ka 1.0 1.0 1.0
+Kd 0.77647 0.17647 0.15294
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+
+newmtl mat2
+Ns 250
+Ka 1.0 1.0 1.0
+Kd 0.1098 0.27059 0.32549
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+
+newmtl mat3
+Ns 250
+Ka 1.0 1.0 1.0
+Kd 0.08235 0.43137 0.27451
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+
+newmtl mat4
+Ns 250
+Ka 1.0 1.0 1.0
+Kd 0.8549 0.6902 0.24706
+Ks 0 0 0
+Ke 0 0 0
+Ni 1.0
+d 1
+illum 1
+
+newmtl mat5
+Ns 250
+Ka 1.0 1.0 1.0
+Kd 0.85 0.85 0.85
+Ks 0 0 0
+Ke 0.0 0.0 0.0
+Ni 1.0
+d 1
+illum 1
+
