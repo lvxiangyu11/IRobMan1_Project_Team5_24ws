@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import open3d as o3d
+import random
 
 def load_point_cloud(file_path):
     """加载点云文件"""
@@ -12,7 +13,7 @@ def load_point_cloud(file_path):
     pointcloud = filter_point_cloud_depth(pointcloud)
     return pointcloud
 
-def filter_point_cloud_depth(pointcloud, min_depth=-0.1):
+def filter_point_cloud_depth(pointcloud, min_depth=-0.001):
     """
     过滤点云中深度小于 min_depth 的点
     :param pointcloud: 输入的 Open3D 点云对象
@@ -48,7 +49,7 @@ def load_obj_with_open3d(obj_path, translation, scale_factor=1):
     """
     try:
         mesh = o3d.io.read_triangle_mesh(obj_path)
-        mesh.scale(scale_factor, center=(0, 0, 0))  # 缩放单位从 cm 转换为 m
+        # mesh.scale(scale_factor, center=(0, 0, 0))  # 缩放单位从 cm 转换为 m
         mesh.translate(translation)  # 应用平移
         pointcloud = mesh.sample_points_uniformly(number_of_points=10000)  # 从网格采样点
         print(f"成功加载模型: {obj_path}, 转换为点云包含 {len(pointcloud.points)} 个点")
@@ -73,67 +74,80 @@ def load_obj_models(obj_dir, spacing=1.0):
             models.append(model)
     return models
 
-def match_multiple_instances(pointcloud, model, max_distance=0.5, min_fitness=0.3, max_iterations=10):
+def get_random_initial_transformation(pointcloud, z_threshold=0.03):
     """
-    匹配点云中同一模型的多个实例
-    :param pointcloud: 待匹配的点云
-    :param model: 单一模型的点云
-    :param max_distance: ICP 的最大对应点距离
-    :param min_fitness: 最低匹配分数阈值，低于此值不认为是匹配
-    :param max_iterations: 最大迭代次数（找到实例的数量上限）
-    :return: 匹配结果列表，每个结果包含平移向量、旋转矩阵和匹配分数
+    从点云中随机选择一个 Z 轴大于指定阈值的点作为初始变换的平移量
+    :param pointcloud: 输入的点云
+    :param z_threshold: Z 轴的阈值
+    :return: 初始变换矩阵 (4x4)
     """
+    points = np.asarray(pointcloud.points)
+    valid_points = points[points[:, 2] > z_threshold]
+
+    if len(valid_points) == 0:
+        raise ValueError("未找到满足 Z > {} 的点".format(z_threshold))
+
+    # 随机选择一个点
+    selected_point = valid_points[np.random.choice(len(valid_points))]
+    print(f"随机选取的初始点: {selected_point}")
+
+    # 构造初始变换矩阵
+    initial_transform = np.eye(4)
+    initial_transform[:3, 3] = selected_point
+    return initial_transform
+
+def match_multiple_instances(pointcloud, model, max_distance, min_fitness=0.3, max_iterations=1000):
     remaining_cloud = pointcloud
     results = []
 
     for iteration in range(max_iterations):
         try:
+            # 获取初始变换（随机选取 Z > 0.03 的点作为初始值）
+            initial_transform = get_random_initial_transformation(remaining_cloud, z_threshold=0.03)
+
             # 使用 ICP 算法进行点云匹配
             reg = o3d.pipelines.registration.registration_icp(
                 remaining_cloud, model, max_distance,
-                np.eye(4),
+                initial_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint()
             )
-            
+
             if reg.fitness < min_fitness:
                 print(f"第 {iteration + 1} 次匹配结束：匹配分数 {reg.fitness:.4f} 低于阈值 {min_fitness}")
-                break
-            
+                continue
+
             # 提取 ICP 结果的变换矩阵
             transformation = reg.transformation
-            rotation_matrix = transformation[:3, :3]  # 旋转矩阵
-            translation_vector = transformation[:3, 3]  # 平移向量
-            
+            rotation_matrix = transformation[:3, :3]
+            translation_vector = transformation[:3, 3]
+
             print(f"第 {iteration + 1} 次匹配成功: 匹配分数 = {reg.fitness:.4f}")
             print(f"位置 (平移向量): {translation_vector}")
             print(f"姿态 (旋转矩阵):\n{rotation_matrix}")
-            
+
             results.append({
                 "instance_id": iteration + 1,
                 "fitness_score": reg.fitness,
                 "rotation_matrix": rotation_matrix,
                 "translation_vector": translation_vector
             })
-            
-            # 从剩余点云中移除匹配到的部分
-            distance_threshold = max_distance
-            distances = model.compute_point_cloud_distance(
-                remaining_cloud.transform(transformation)
-            )
-            remaining_indices = [i for i, d in enumerate(distances) if d > distance_threshold]
+
+            # 使用模型的变换结果移除匹配点
+            transformed_model = model.transform(transformation)
+            distances = remaining_cloud.compute_point_cloud_distance(transformed_model)
+            remaining_indices = [i for i, d in enumerate(distances) if d > max_distance]
             remaining_cloud = remaining_cloud.select_by_index(remaining_indices)
-            
+
             if len(remaining_cloud.points) == 0:
                 print("剩余点云为空，匹配结束")
                 break
         except Exception as e:
             print(f"匹配过程出错: {e}")
             break
-    
+
     return results
 
-
-def match_point_cloud_with_models(pointcloud, models, max_distance=0.5, min_fitness=0.3, max_iterations=10):
+def match_point_cloud_with_models(pointcloud, models, max_distance, min_fitness=0.3):
     """
     匹配点云与多个模型，包括场景中同一模型的多个实例
     :param pointcloud: 待匹配的点云
@@ -148,7 +162,7 @@ def match_point_cloud_with_models(pointcloud, models, max_distance=0.5, min_fitn
     for model_idx, model in enumerate(models):
         print(f"\n开始匹配模型 {model_idx} ({len(model.points)} 点)")
         model_results = match_multiple_instances(
-            pointcloud, model, max_distance, min_fitness, max_iterations
+            pointcloud, model, max_distance, min_fitness
         )
         
         # 为每个匹配结果添加模型信息
@@ -157,7 +171,6 @@ def match_point_cloud_with_models(pointcloud, models, max_distance=0.5, min_fitn
             all_results.append(result)
     
     return all_results
-
 
 def visualize_scene(pointcloud, models, coordinate_frame_size=0.5, origin=[0, 0, 0]):
     """
@@ -168,7 +181,7 @@ def visualize_scene(pointcloud, models, coordinate_frame_size=0.5, origin=[0, 0,
     :param origin: 坐标系的原点位置，默认为 [0, 0, 0]
     """
     geometries = [pointcloud]
-    # geometries.extend(models)
+    geometries.extend(models)
 
     # 创建并添加坐标系
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
@@ -237,7 +250,44 @@ def visualize_models(models):
         width=800, height=600
     )
 
+def visualize_results(pointcloud, results, coordinate_frame_size=0.2, origin=[0, 0, 0]):
+    """
+    可视化点云和匹配结果，包括变换后的模型实例坐标系
+    :param pointcloud: 原始点云
+    :param results: 匹配结果列表，每个包含平移向量和旋转矩阵
+    :param coordinate_frame_size: 坐标系的大小
+    """
+    geometries = [pointcloud]
+    # 添加坐标系
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=coordinate_frame_size,
+        origin=origin
+    )
+    geometries.append(coordinate_frame)
 
+    # 添加每个匹配实例的坐标系
+    for result in results:
+        translation = result['translation_vector']
+        rotation = result['rotation_matrix']
+
+        # 创建坐标系
+        coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=coordinate_frame_size
+        )
+        # 应用旋转和平移
+        transformation = np.eye(4)
+        transformation[:3, :3] = rotation
+        transformation[:3, 3] = translation
+        coordinate_frame.transform(transformation)
+        geometries.append(coordinate_frame)
+    
+    # 可视化
+    o3d.visualization.draw_geometries(
+        geometries,
+        window_name="Point Cloud with Results",
+        width=800,
+        height=600
+    )
 
 def move_models(models, translation):
     """
@@ -254,6 +304,36 @@ def move_models(models, translation):
         print(f"模型 {i} 已移动，平移向量: {translation}")
     return moved_models
 
+# 使用Fast Global Registration (FGR)
+def global_registration(cube, pointcloud):
+    # 创建特征提取器，使用FPFH特征
+    voxel_size = 0.01  # 调整合适的体素大小
+    cube_down = cube.voxel_down_sample(voxel_size)
+    pointcloud_down = pointcloud.voxel_down_sample(voxel_size)
+
+    # 估计法线
+    pointcloud_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+
+    # 计算FPFH特征
+    pointcloud_fpfh = o3d.pipelines.registration.compute_fpfh_feature(pointcloud_down, o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=100))
+        
+    cube_fpfh = o3d.pipelines.registration.compute_fpfh_feature(cube_down, o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=100))
+    pointcloud_fpfh = o3d.pipelines.registration.compute_fpfh_feature(pointcloud_down, o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=100))
+    
+    # 使用FGR进行全局配准
+    result = o3d.pipelines.registration.registration_fast_based_on_feature_matching(
+        cube_down, pointcloud_down, cube_fpfh, pointcloud_fpfh, 
+        o3d.pipelines.registration.FastGlobalRegistrationOption(
+            maximum_correspondence_distance=0.001,
+            use_absolute_scale=False,  # 默认值
+            decrease_mu=False,  # 默认值
+            iteration_number=64,  # 默认值
+            maximum_tuple_count=10000  # 默认值
+        )
+    )
+    
+    return result
+
 def main():
     # 配置路径
     # pointcloud_path = "/opt/ros_ws/tmp/zed_point_cloud.ply"  # 替换为实际点云路径
@@ -269,24 +349,36 @@ def main():
     
     # 匹配点云和模型
     print("开始匹配点云和模型...")
-    results = match_point_cloud_with_models(pointcloud, models, max_distance=0.5)
-    print("\n匹配结果:")
+    cube = models[0]
+    # results = match_point_cloud_with_models(pointcloud, models, 0.01)
+    # print("\n匹配结果:")
+
+    result = global_registration(cube, pointcloud)
+
+    # 查看配准结果
+    print("Transformation Matrix:\n", result.transformation)
+    cube.transform(result.transformation)
+
+    # 可视化
+    o3d.visualization.draw_geometries([cube, pointcloud])
 
     # 打印结果
-    for result in results:
-        print(f"\n模型: {result['model_name']} - 实例 ID: {result['instance_id']}")
-        print(f"匹配分数: {result['fitness_score']:.4f}")
-        print(f"位置 (平移向量): {result['translation_vector']}")
-        print(f"姿态 (旋转矩阵):\n{result['rotation_matrix']}")
+    # for result in results:
+    #     print(f"\n模型: {result['model_name']} - 实例 ID: {result['instance_id']}")
+    #     print(f"匹配分数: {result['fitness_score']:.4f}")
+    #     print(f"位置 (平移向量): {result['translation_vector']}")
+    #     print(f"姿态 (旋转矩阵):\n{result['rotation_matrix']}")
+    # visualize_results(pointcloud, results)
 
-    models = move_models(models, [0.1, 0, 0.6])
+    # models = move_models(models,  [0.36796876, 0.17114625, 0.03769435])
+    # pointcloud = load_point_cloud(pointcloud_path)
+    # visualize_results(pointcloud, results)
 
-    pointcloud = load_point_cloud(pointcloud_path)
-    pointcloud2 = load_point_cloud(pointcloud_path2)
+    # pointcloud2 = load_point_cloud(pointcloud_path2)
     # 可视化点云和模型
-    visualize_scene(pointcloud, models)
-    visualize_scene(pointcloud2, models)
-    visualize_scenes([pointcloud,pointcloud2])
+    # visualize_scene(pointcloud, models)
+    # visualize_scene(pointcloud2, models)
+    # visualize_scenes([pointcloud,pointcloud2])
     # visualize_models(models)
 
 if __name__ == "__main__":
