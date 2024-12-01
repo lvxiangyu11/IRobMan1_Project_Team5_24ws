@@ -172,7 +172,7 @@ ypose=0
 zpose=0
 
 
-for i in range(3):
+for i in range(1):
   print("create_cubes:", i)
   position=[xpose + random.uniform(*table_xlim),
             ypose + random.uniform(*table_ylim),
