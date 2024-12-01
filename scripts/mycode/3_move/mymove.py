@@ -4,137 +4,24 @@ import sys
 import rospy
 import moveit_commander
 import geometry_msgs.msg
-import tf
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
-import cv2
+from tf.transformations import quaternion_from_euler, quaternion_multiply, quaternion_inverse
 import numpy as np
-from tf.transformations import quaternion_from_euler
-from moveit_commander.planning_scene_interface import PlanningSceneInterface
-from shape_msgs.msg import SolidPrimitive
-from moveit_msgs.msg import CollisionObject
 
-
-class MoveRobotWithCollision:
+class MoveRobot:
     def __init__(self):
         # 初始化 MoveIt 和 ROS 节点
         moveit_commander.roscpp_initialize(sys.argv)
-        rospy.init_node("move_robot_with_collision_node", anonymous=True)
-
+        if not rospy.core.is_initialized():
+            rospy.init_node("my_gripper_node", anonymous=True)
         # 初始化机器人接口
         self.robot = moveit_commander.RobotCommander()
-        self.scene = PlanningSceneInterface()
         self.group_name = "panda_arm"  # 根据你的机器人调整
         self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
 
-        # 初始化 TF 变换监听器
-        self.tf_listener = tf.TransformListener()
-
-        # 初始化深度图桥接器
-        self.bridge = CvBridge()
-
-        # 设置点云订阅
-        self.depth_topic = "/zed2/zed_node/depth/depth_registered"
-        self.depth_subscriber = rospy.Subscriber(
-            self.depth_topic, Image, self.depth_callback
-        )
-        self.latest_depth = None
-
-        rospy.loginfo("MoveRobotWithCollision initialized successfully.")
-
-    def depth_callback(self, depth_msg):
-        """接收深度图数据的回调函数"""
-        try:
-            self.latest_depth = self.bridge.imgmsg_to_cv2(depth_msg, "32FC1")
-            rospy.loginfo("Depth data received successfully.")
-        except Exception as e:
-            rospy.logerr("Failed to convert depth image: %s", str(e))
-
-    def get_transform(self, target_frame, source_frame):
-        """获取指定帧之间的变换"""
-        try:
-            self.tf_listener.waitForTransform(
-                target_frame, source_frame, rospy.Time(0), rospy.Duration(1.0)
-            )
-            (trans, rot) = self.tf_listener.lookupTransform(target_frame, source_frame, rospy.Time(0))
-            return trans, rot
-        except tf.Exception as e:
-            rospy.logerr("TF lookup failed: %s", str(e))
-            return None, None
-
-    def update_collision_objects(self):
-        """基于深度图更新碰撞对象"""
-        if self.latest_depth is None:
-            rospy.logwarn("No depth data received yet. Skipping collision update.")
-            return
-
-        # 获取相机到全局坐标的变换
-        trans, rot = self.get_transform("world", "left_camera_link")
-        if trans is None or rot is None:
-            rospy.logwarn("Failed to get TF transform. Skipping collision update.")
-            return
-
-        # 将深度图转化为点云
-        height, width = self.latest_depth.shape
-        fx, fy = 525.0, 525.0  # 相机焦距，根据你的相机设置调整
-        cx, cy = width / 2, height / 2
-
-        points = []
-        for v in range(0, height, 10):  # 减少计算量，每 10 行采样一次
-            for u in range(0, width, 10):  # 每 10 列采样一次
-                z = self.latest_depth[v, u]
-                if np.isnan(z) or z <= 0:
-                    continue
-                x = (u - cx) * z / fx
-                y = (v - cy) * z / fy
-                points.append([x, y, z])
-
-        # 转换到全局坐标
-        points_global = []
-        for point in points:
-            p = np.array(point)
-            rotation_matrix = tf.transformations.quaternion_matrix(rot)[:3, :3]
-            point_global = np.dot(rotation_matrix, p) + np.array(trans)
-            points_global.append(point_global)
-
-        # 添加碰撞对象到规划场景
-        self.scene.remove_world_object("obstacle")  # 先清除之前的障碍物
-        co = CollisionObject()
-        co.id = "obstacle"
-        co.header.frame_id = "world"
-
-        # 使用点云的包围盒作为碰撞对象
-        points_global = np.array(points_global)
-        if points_global.size > 0:
-            min_point = np.min(points_global, axis=0)
-            max_point = np.max(points_global, axis=0)
-            size = max_point - min_point
-
-            primitive = SolidPrimitive()
-            primitive.type = SolidPrimitive.BOX
-            primitive.dimensions = [size[0], size[1], size[2]]
-
-            co.primitives.append(primitive)
-            co.primitive_poses.append(
-                geometry_msgs.msg.Pose(
-                    position=geometry_msgs.msg.Point(
-                        x=(min_point[0] + max_point[0]) / 2,
-                        y=(min_point[1] + max_point[1]) / 2,
-                        z=(min_point[2] + max_point[2]) / 2,
-                    ),
-                    orientation=geometry_msgs.msg.Quaternion(0, 0, 0, 1),
-                )
-            )
-            co.operation = CollisionObject.ADD
-            self.scene.add_object(co)
-            rospy.loginfo("Updated collision object based on depth data.")
-        else:
-            rospy.logwarn("No valid points found in depth data. Skipping collision update.")
+        rospy.loginfo("MoveRobot initialized successfully.")
 
     def move(self, position, rpy):
         """根据目标位置和姿态移动机器人"""
-        self.update_collision_objects()
-
         # 将 RPY 转换为四元数
         quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
@@ -160,18 +47,91 @@ class MoveRobotWithCollision:
 
         return success
 
+    def grasp_approach(self, start_position, end_position, rpy):
+        """
+        从起始位置逐步接近目标位置，同时保持爪子的方向与目标姿态一致。
+        """
+        try:
+            # 将 RPY 转换为四元数
+            quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
+
+            # 生成路径点列表
+            waypoints = []
+            step_count = 2  # 插值步数
+
+            for i in range(step_count + 1):
+                t = i / float(step_count)
+                pose = geometry_msgs.msg.Pose()
+                pose.position.x = start_position[0] * (1 - t) + end_position[0] * t
+                pose.position.y = start_position[1] * (1 - t) + end_position[1] * t
+                pose.position.z = start_position[2] * (1 - t) + end_position[2] * t
+                pose.orientation.x = quaternion[0]
+                pose.orientation.y = quaternion[1]
+                pose.orientation.z = quaternion[2]
+                pose.orientation.w = quaternion[3]
+                waypoints.append(pose)
+
+            # 打印路径点调试信息
+            rospy.loginfo("Generated waypoints:")
+            for idx, wp in enumerate(waypoints):
+                rospy.loginfo(
+                    f"Waypoint {idx}: Position({wp.position.x}, {wp.position.y}, {wp.position.z}), "
+                    f"Orientation({wp.orientation.x}, {wp.orientation.y}, {wp.orientation.z}, {wp.orientation.w})"
+                )
+
+            # 笛卡尔路径规划
+            rospy.loginfo("Planning Cartesian path...")
+            (plan, fraction) = self.move_group.compute_cartesian_path(
+                waypoints,   # 路径点
+                0.01,        # 最大步长
+                True,        # 避免碰撞
+                0.0          # 跳跃阈值
+            )
+
+            # 检查路径规划结果
+            if fraction < 1.0:
+                rospy.logwarn(f"Path planning succeeded for only {fraction * 100:.2f}% of the path")
+                return False
+
+            rospy.loginfo("Path planning completed successfully!")
+
+            # 执行路径
+            rospy.loginfo("Executing Cartesian path...")
+            success = self.move_group.execute(plan, wait=True)
+
+            # 停止和清理
+            self.move_group.stop()
+            self.move_group.clear_pose_targets()
+
+            if success:
+                rospy.loginfo("Grasp approach executed successfully.")
+            else:
+                rospy.logwarn("Grasp approach execution failed.")
+
+            return success
+
+        except Exception as e:
+            rospy.logerr(f"Exception in grasp_approach: {e}")
+            return False
+
+
+
     def __del__(self):
         moveit_commander.roscpp_shutdown()
-        rospy.loginfo("MoveRobotWithCollision shut down.")
+        rospy.loginfo("MoveRobot shut down.")
 
 
 if __name__ == "__main__":
     try:
-        robot_mover = MoveRobotWithCollision()
-        target_position = [0.4, 0, 0.13 + 0.0]  # 目标位置 (x, y, z)
-        target_rpy = [0, np.pi, np.pi/2+np.pi/4]  # 目标姿态 (roll, pitch, yaw)
-        rospy.loginfo("Starting move with collision avoidance...")
-        robot_mover.move(target_position, target_rpy)
+        robot_mover = MoveRobot()
+
+        # 初始和目标位置
+        start_position = [0.4, 0, 0.5]
+        end_position = [0.4, 0, 0.14+0.1]
+        target_rpy = [0, np.pi, np.pi/4]
+
+        rospy.loginfo("Starting grasp approach...")
+        robot_mover.grasp_approach(start_position, end_position, target_rpy)
     except rospy.ROSInterruptException:
         pass
     except KeyboardInterrupt:
