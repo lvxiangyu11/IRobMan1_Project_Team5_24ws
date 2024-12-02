@@ -6,7 +6,7 @@ from mygripper import MyGripper
 from mymove import MoveRobot
 
 class PickAndPlace:
-    def __init__(self, approach_distance=0.1):
+    def __init__(self, approach_distance=0.15):
         self.robot_mover = MoveRobot()
         self.gripper = MyGripper()
         self.approach_distance = approach_distance
@@ -98,19 +98,19 @@ def peral():
         place_rpy=place_rpy
     )
 
-    # R
+    # A
     pick_place.pick_and_place(
         pick_pos=[0.5, -0.02, 0.13],
         pick_rpy=pick_rpy,
-        place_pos=[0.40, 0.00, 0.13],
+        place_pos=[0.40, -0.05, 0.13],
         place_rpy=place_rpy
     )
 
-    # A
+    # R
     pick_place.pick_and_place(
         pick_pos=[0.6, -0.08, 0.13],
         pick_rpy=pick_rpy,
-        place_pos=[0.40, -0.05, 0.13],
+        place_pos=[0.40, 0.00, 0.13],
         place_rpy=place_rpy
     )
 

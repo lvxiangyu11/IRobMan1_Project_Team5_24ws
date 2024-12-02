@@ -57,7 +57,7 @@ class MoveRobot:
 
             # 生成路径点列表
             waypoints = []
-            step_count = 2  # 插值步数
+            step_count = 100  # 插值步数
 
             for i in range(step_count + 1):
                 t = i / float(step_count)
@@ -73,11 +73,11 @@ class MoveRobot:
 
             # 打印路径点调试信息
             rospy.loginfo("Generated waypoints:")
-            for idx, wp in enumerate(waypoints):
-                rospy.loginfo(
-                    f"Waypoint {idx}: Position({wp.position.x}, {wp.position.y}, {wp.position.z}), "
-                    f"Orientation({wp.orientation.x}, {wp.orientation.y}, {wp.orientation.z}, {wp.orientation.w})"
-                )
+            # for idx, wp in enumerate(waypoints):
+            #     rospy.loginfo(
+            #         f"Waypoint {idx}: Position({wp.position.x}, {wp.position.y}, {wp.position.z}), "
+            #         f"Orientation({wp.orientation.x}, {wp.orientation.y}, {wp.orientation.z}, {wp.orientation.w})"
+            #     )
 
             # 笛卡尔路径规划
             rospy.loginfo("Planning Cartesian path...")
@@ -127,7 +127,7 @@ if __name__ == "__main__":
 
         # 初始和目标位置
         start_position = [0.4, 0, 0.5]
-        end_position = [0.4, 0, 0.14+0.1]
+        end_position = [0.4, 0, 0.14+0.3]
         target_rpy = [0, np.pi, np.pi/4]
 
         rospy.loginfo("Starting grasp approach...")

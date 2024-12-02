@@ -152,6 +152,6 @@ if __name__ == "__main__":
     rospy.sleep(2)  # 等待话题数据发布
 
     # 保存点云
-    original_file = "/opt/ros_ws/tmp/zed_point_cloud3.ply"
-    world_file = "/opt/ros_ws/tmp/zed_point_cloud_world3.ply"
+    original_file = "/opt/ros_ws/zed_point_cloud3.ply"
+    world_file = "/opt/ros_ws/src/franka_zed_gazebo/scripts/mycode/2_perception/mesh/zed_point_cloud_world3.ply"
     point_cloud_saver.save_point_clouds(original_file, world_file)
