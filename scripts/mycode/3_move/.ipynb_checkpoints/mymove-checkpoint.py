@@ -57,7 +57,7 @@ class MoveRobot:
 
             # 生成路径点列表
             waypoints = []
-            step_count = 100  # 插值步数
+            step_count = 50  # 插值步数
 
             for i in range(step_count + 1):
                 t = i / float(step_count)
@@ -70,14 +70,6 @@ class MoveRobot:
                 pose.orientation.z = quaternion[2]
                 pose.orientation.w = quaternion[3]
                 waypoints.append(pose)
-
-            # 打印路径点调试信息
-            rospy.loginfo("Generated waypoints:")
-            for idx, wp in enumerate(waypoints):
-                rospy.loginfo(
-                    f"Waypoint {idx}: Position({wp.position.x}, {wp.position.y}, {wp.position.z}), "
-                    f"Orientation({wp.orientation.x}, {wp.orientation.y}, {wp.orientation.z}, {wp.orientation.w})"
-                )
 
             # 笛卡尔路径规划
             rospy.loginfo("Planning Cartesian path...")
@@ -114,7 +106,20 @@ class MoveRobot:
             rospy.logerr(f"Exception in grasp_approach: {e}")
             return False
 
-
+    def get_current_pose(self):
+        """获取当前爪子的位置和姿态"""
+        try:
+            current_pose = self.move_group.get_current_pose().pose
+            position = current_pose.position
+            orientation = current_pose.orientation
+            rospy.loginfo("Current pose: Position({:.3f}, {:.3f}, {:.3f}), Orientation({:.3f}, {:.3f}, {:.3f}, {:.3f})".format(
+                position.x, position.y, position.z,
+                orientation.x, orientation.y, orientation.z, orientation.w
+            ))
+            return current_pose
+        except Exception as e:
+            rospy.logerr(f"Failed to get current pose: {e}")
+            return None
 
     def __del__(self):
         moveit_commander.roscpp_shutdown()
@@ -125,13 +130,19 @@ if __name__ == "__main__":
     try:
         robot_mover = MoveRobot()
 
+        # 获取当前爪子位置
+        rospy.loginfo("Getting current pose...")
+        current_pose = robot_mover.get_current_pose()
+        if current_pose:
+            rospy.loginfo("Current position and orientation retrieved successfully.")
+
         # 初始和目标位置
         start_position = [0.4, 0, 0.5]
-        end_position = [0.4, 0, 0.14+0.1]
-        target_rpy = [0, np.pi, np.pi/4]
+        end_position = [0.4, 0, 0.14 + 0.3]
+        target_rpy = [0, np.pi, np.pi / 4]
 
         rospy.loginfo("Starting grasp approach...")
-        robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        # robot_mover.grasp_approach(start_position, end_position, target_rpy)
     except rospy.ROSInterruptException:
         pass
     except KeyboardInterrupt:
