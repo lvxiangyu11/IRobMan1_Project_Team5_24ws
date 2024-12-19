@@ -4,6 +4,7 @@ from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 import matplotlib.pyplot as plt
 import easyocr
+import cv2
 
 class ImageRecognizer:
     def __init__(self, top_dir="cubes/"):
@@ -84,6 +85,141 @@ class ImageRecognizer:
 
         return similarity_results[:10]
     
+    def match_features_with_orb(self, test_image_np):
+        """
+        使用特征点匹配（ORB）算法对输入彩色图像进行识别，返回最相似的图片的相关信息。
+        """
+        # 将输入图像转换为 OpenCV 格式（BGR）
+        # test_image = cv2.cvtColor(test_image_np, cv2.COLOR_RGB2BGR)
+        test_image = test_image_np
+        # 创建 ORB 特征检测器（调整参数）
+        orb = cv2.ORB_create(nfeatures=2000, scaleFactor=1.2, nlevels=8)
+
+        # 计算输入测试图像的特征点和描述子
+        keypoints_test, descriptors_test = orb.detectAndCompute(test_image, None)
+
+        if descriptors_test is None:
+            raise ValueError("No descriptors found for the test image.")
+
+        # 匹配结果存储
+        matching_results = []
+
+        # 遍历数据库中的每张图片
+        for i in self.cubes_images:
+            for j in self.cubes_images[i]:
+                # 获取当前图像并调整大小以匹配输入图像
+                current_image_np = np.array(self.cubes_images[i][j])
+                if current_image_np.shape[2] == 4:  # 检测到 4 通道
+                    current_image_np = cv2.cvtColor(current_image_np, cv2.COLOR_RGBA2BGR)
+                if len(current_image_np.shape) != 3 or current_image_np.shape[2] != 3:
+                    print(f"Invalid image format for {i}-{j}. Skipping.")
+                    continue
+
+                current_image_resized = cv2.resize(
+                    current_image_np, 
+                    (test_image_np.shape[1], test_image_np.shape[0]), 
+                    interpolation=cv2.INTER_AREA
+                )
+
+                # 图像增强
+                enhanced_image = cv2.equalizeHist(cv2.cvtColor(current_image_resized, cv2.COLOR_BGR2GRAY))
+                enhanced_image = cv2.cvtColor(enhanced_image, cv2.COLOR_GRAY2BGR)
+
+                # 计算当前图像的特征点和描述子
+                keypoints_current, descriptors_current = orb.detectAndCompute(enhanced_image, None)
+
+                if descriptors_current is None:
+                    print(f"No descriptors found for image {i}-{j}. Skipping.")
+                    continue
+
+                # 特征点匹配
+                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+                matches = bf.match(descriptors_test, descriptors_current)
+
+                # 根据距离排序匹配结果，取前 50 个最优匹配点
+                matches = sorted(matches, key=lambda x: x.distance)[:50]
+
+                # 计算匹配分数（匹配点越多，分数越高，距离越短，分数越高）
+                match_score = sum([1 / (match.distance + 1e-5) for match in matches])
+
+                # 保存匹配结果
+                matching_results.append((match_score, i, j, len(matches)))
+
+        # 对结果按匹配分数降序排序
+        matching_results.sort(key=lambda x: x[0], reverse=True)
+
+        return matching_results[:10]
+    
+
+    def match_features_with_sift(self, test_image_np):
+        """
+        使用 SIFT 特征点匹配算法对输入彩色图像进行识别，返回最相似的图片的相关信息。
+        """
+        # 将输入图像直接作为测试图像
+        test_image = test_image_np
+
+        # 创建 SIFT 特征检测器（调整参数）
+        sift = cv2.SIFT_create(contrastThreshold=0.01, edgeThreshold=20, sigma=1.0)
+
+        # 提取测试图像的特征点和描述子
+        keypoints_test, descriptors_test = sift.detectAndCompute(test_image, None)
+
+        if descriptors_test is None:
+            raise ValueError("No descriptors found for the test image.")
+
+        # 匹配结果存储
+        matching_results = []
+
+        # 遍历数据库中的每张图片
+        for i in self.cubes_images:
+            for j in self.cubes_images[i]:
+                # 获取当前图像并调整大小以匹配输入图像
+                current_image = np.array(self.cubes_images[i][j])
+
+                # 检查通道数并转换为 3 通道（必要时）
+                if current_image.shape[2] == 4:  # RGBA 转换为 BGR
+                    current_image = cv2.cvtColor(current_image, cv2.COLOR_RGBA2BGR)
+
+                if len(current_image.shape) != 3 or current_image.shape[2] != 3:
+                    print(f"Invalid image format for {i}-{j}. Skipping.")
+                    continue
+
+                current_image_resized = cv2.resize(
+                    current_image,
+                    (test_image.shape[1], test_image.shape[0]),
+                    interpolation=cv2.INTER_AREA
+                )
+
+                # 图像增强：对比度增强或锐化（根据需要选择是否开启）
+                gray = cv2.cvtColor(current_image_resized, cv2.COLOR_BGR2GRAY)
+                equalized = cv2.equalizeHist(gray)
+                enhanced_image = cv2.cvtColor(equalized, cv2.COLOR_GRAY2BGR)
+
+                # 提取当前图像的特征点和描述子
+                keypoints_current, descriptors_current = sift.detectAndCompute(enhanced_image, None)
+
+                if descriptors_current is None:
+                    print(f"No descriptors found for image {i}-{j}. Skipping.")
+                    continue
+
+                # 特征点匹配
+                bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)  # SIFT 使用 L2 距离
+                matches = bf.match(descriptors_test, descriptors_current)
+
+                # 根据距离排序匹配结果，取前 50 个最优匹配点
+                matches = sorted(matches, key=lambda x: x.distance)[:50]
+
+                # 计算匹配分数（匹配点越多，分数越高，距离越短，分数越高）
+                match_score = sum([1 / (match.distance + 1e-5) for match in matches])
+
+                # 保存匹配结果
+                matching_results.append((match_score, i, j, len(matches)))
+
+        # 对结果按匹配分数降序排序
+        matching_results.sort(key=lambda x: x[0], reverse=True)
+
+        return matching_results[:10]
+
     def get_image_from_result(self, result, show=False):
         """
         从结果中提取并返回对应的图像（包括旋转后的图像）。
@@ -190,10 +326,18 @@ class ImageRecognizer:
 if __name__ == "__main__":
     # 示例用法
     recognizer = ImageRecognizer(top_dir="/opt/ros_ws/src/franka_zed_gazebo/scripts/mycode/2_perception/cubes/")
-    test_image_np = np.array(Image.open("/opt/ros_ws/src/franka_zed_gazebo/scripts/mycode/2_perception/test.png"))
+    test_image_np = np.array(Image.open("/opt/ros_ws/src/franka_zed_gazebo/scripts/mycode/2_perception/test_0.png"))
 
     # 识别图像并显示结果
     results = recognizer.recognize_image(test_image_np)
+    print(results[0])
+    recognizer.display_results(test_image_np, results[:10])
+
+    results = recognizer.match_features_with_orb(test_image_np)
+    print(results[0])
+    recognizer.display_results(test_image_np, results[:10])
+
+    results = recognizer.match_features_with_sift(test_image_np)
     print(results[0])
 
     # 获取并显示第一个结果的图像
@@ -206,7 +350,7 @@ if __name__ == "__main__":
     recognizer.display_results(test_image_np, results[:10])
 
     # 使用 CNN 和文字筛选最佳匹配
-    best_result = recognizer.selected_best_based_on_CNN(results, test_image_np)
-    print("Best Result:", best_result)
-    img, angle = recognizer.get_image_from_result(best_result, True)
-    print(angle)
+    # best_result = recognizer.selected_best_based_on_CNN(results, test_image_np)
+    # print("Best Result:", best_result)
+    # img, angle = recognizer.get_image_from_result(best_result, True)
+    # print(angle)

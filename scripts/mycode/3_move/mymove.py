@@ -4,8 +4,9 @@ import sys
 import rospy
 import moveit_commander
 import geometry_msgs.msg
-from tf.transformations import quaternion_from_euler, quaternion_multiply, quaternion_inverse
+from tf.transformations import quaternion_from_euler
 import numpy as np
+
 
 class MoveRobot:
     def __init__(self):
@@ -20,8 +21,27 @@ class MoveRobot:
 
         rospy.loginfo("MoveRobot initialized successfully.")
 
+    def add_constraints(self):
+        """添加路径约束，限制机器人在 z > 0.01 的区域内活动"""
+        current_pose = self.move_group.get_current_pose().pose
+        constraints = moveit_commander.Constraints()
+
+        # 设置约束
+        constraints.name = "z_above_0.01"
+        self.move_group.set_path_constraints(constraints)
+
+        rospy.loginfo("Constraints added: z > 0.01")
+
+    def clear_constraints(self):
+        """清除路径约束"""
+        self.move_group.clear_path_constraints()
+        rospy.loginfo("Path constraints cleared.")
+
     def move(self, position, rpy):
         """根据目标位置和姿态移动机器人"""
+        # 添加路径约束
+        self.add_constraints()
+
         # 将 RPY 转换为四元数
         quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
@@ -39,6 +59,9 @@ class MoveRobot:
         success = self.move_group.go(wait=True)
         self.move_group.stop()
         self.move_group.clear_pose_targets()
+
+        # 清除路径约束
+        self.clear_constraints()
 
         if success:
             rospy.loginfo("Move successful to position: {} and RPY: {}".format(position, rpy))
@@ -142,7 +165,7 @@ if __name__ == "__main__":
         target_rpy = [0, np.pi, np.pi / 4]
 
         rospy.loginfo("Starting grasp approach...")
-        # robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        robot_mover.grasp_approach(start_position, end_position, target_rpy)
     except rospy.ROSInterruptException:
         pass
     except KeyboardInterrupt:
