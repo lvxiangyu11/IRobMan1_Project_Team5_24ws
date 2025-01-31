@@ -74,9 +74,7 @@ if __name__ == "__main__":
         gripper = MyGripper()
 
         rospy.loginfo("Closing gripper...")
-        gripper.close(width=0.05, inner=0.01, outer=0.01, speed=0.1, force=5.0)
-
-        rospy.sleep(2)  # 等待 2 秒，模拟抓取完成后的操作
+        # gripper.close(width=0.05, inner=0.01, outer=0.01, speed=0.1, force=5.0)
 
         rospy.loginfo("Opening gripper...")
         gripper.open(width=0.08, speed=0.1)

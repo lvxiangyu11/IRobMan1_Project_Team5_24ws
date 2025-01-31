@@ -16,7 +16,7 @@ class MoveRobot:
             rospy.init_node("my_gripper_node", anonymous=True)
         # 初始化机器人接口
         self.robot = moveit_commander.RobotCommander()
-        self.group_name = "panda_arm"  # 根据你的机器人调整
+        self.group_name = "panda_manipulator"  # 根据你的机器人调整
         self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
 
         rospy.loginfo("MoveRobot initialized successfully.")
@@ -158,14 +158,19 @@ if __name__ == "__main__":
         current_pose = robot_mover.get_current_pose()
         if current_pose:
             rospy.loginfo("Current position and orientation retrieved successfully.")
+            print(current_pose)
 
         # 初始和目标位置
         start_position = [0.4, 0, 0.5]
-        end_position = [0.4, 0, 0.14 + 0.3]
-        target_rpy = [0, np.pi, np.pi / 4]
+        # end_position = [0.4, 0, 0.14 + 0.3]
+        end_position = [0.7112641868366598, 0.21893331742514316, 0.13104804613096419] 
+        # target_rpy = [0, np.pi, np.pi / 4]
+        target_rpy = [-3.1369628913905916, 0.003306838666246037, 1.4534627124557509]
+        
 
         rospy.loginfo("Starting grasp approach...")
-        robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        robot_mover.move(end_position, target_rpy)
+        # robot_mover.grasp_approach(start_position, end_position, target_rpy)
     except rospy.ROSInterruptException:
         pass
     except KeyboardInterrupt:
