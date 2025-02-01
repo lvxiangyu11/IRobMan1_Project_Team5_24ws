@@ -20,7 +20,7 @@ class MyGripper:
         self.move_client.wait_for_server()
         rospy.loginfo("Gripper action servers ready.")
 
-    def close(self, width=0.05, inner=0.01, outer=0.01, speed=0.05, force=100.0):
+    def close(self, width=0.05, inner=0.01, outer=0.01, speed=0.05, force=20.0):
         """
         闭合机械手抓取物体
         :param width: 抓取宽度 (m)

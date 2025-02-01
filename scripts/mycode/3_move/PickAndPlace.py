@@ -26,7 +26,8 @@ class PickAndPlace:
             time.sleep(0.5)
 
             # 移动到物体位置
-            self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy)
+            # self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy)
+            self.robot_mover.move(pick_pos, pick_rpy)
             time.sleep(0.5)
 
             # 闭合夹爪
@@ -35,13 +36,14 @@ class PickAndPlace:
 
             # 移动到高位置
             high_pick_up_pos = self._calculate_approach_position(pick_pos)
-            self.robot_mover.grasp_approach(pick_pos, high_pick_up_pos, pick_rpy)
+            # self.robot_mover.grasp_approach(pick_pos, high_pick_up_pos, pick_rpy)
+            self.robot_mover.move(high_pick_up_pos, pick_rpy)
             time.sleep(0.5)
 
             # 移动到放置高位置
             high_place_pos = self._calculate_approach_position(place_pos)
-            self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
-            # self.robot_mover.move(high_place_pos, place_rpy)
+            # self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
+            self.robot_mover.move(high_place_pos, place_rpy)
             time.sleep(0.5)
 
             # 移动到放置位置
@@ -49,7 +51,7 @@ class PickAndPlace:
             time.sleep(0.5)
 
             # 打开夹爪释放
-            self.gripper.open(width=0.08, speed=0.1)
+            self.gripper.open(width=0.07, speed=0.1)
             time.sleep(0.5)
 
             # 返回高位置

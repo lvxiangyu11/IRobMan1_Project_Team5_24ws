@@ -233,9 +233,9 @@ if __name__ == "__main__":
         # 初始和目标位置
         start_position = [0.4, 0, 0.5]
         # end_position = [0.4, 0, 0.14 + 0.3]
-        end_position = [0.6158788708235255, 0.17104437485289326, 0.12387946531321276]
-        # target_rpy = [0, np.pi, np.pi / 4]
-        target_rpy = [3.073072761909015, -0.10599529374821026, 1.6407134703643427]
+        end_position = [0.3, 0.0, 0.3]
+        target_rpy = [0, np.pi, np.pi / 2]
+        # target_rpy = [0, 0, 0]
          
 
         rospy.loginfo("Starting grasp approach...")
