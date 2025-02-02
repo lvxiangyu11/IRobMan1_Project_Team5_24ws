@@ -12,17 +12,22 @@ import shape_msgs.msg
 class MoveRobot:
     def __init__(self):
         # 初始化 MoveIt 和 ROS 节点
-
         moveit_commander.roscpp_initialize(sys.argv)
         if not rospy.core.is_initialized():
             rospy.init_node("my_gripper_node", anonymous=True)
-        # 初始化机器人接口
-        self.robot = moveit_commander.RobotCommander()
-        self.group_name = "panda_manipulator"  # 根据你的机器人调整
-        self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
-        self.add_constraints()
 
-        rospy.loginfo("MoveRobot initialized successfully.")
+        # 等待 move_group action server
+        rospy.loginfo("Waiting for move_group action server...")
+        try:
+            # 初始化机器人接口
+            self.robot = moveit_commander.RobotCommander()
+            self.group_name = "panda_manipulator"  # 根据你的机器人调整
+            self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
+            self.add_constraints()
+            rospy.loginfo("MoveRobot initialized successfully.")
+        except Exception as e:
+            rospy.logerr(f"Error initializing MoveRobot: {e}")
+            raise
 
     def add_constraints(self):
         """添加路径约束，限制机器人在 z > 0.01 的区域内活动"""
@@ -100,82 +105,103 @@ class MoveRobot:
 
     def move(self, position, rpy):
         """根据目标位置和姿态移动机器人"""
-        # 添加路径约束
-        
-
-        # 将 RPY 转换为四元数
-        quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
-
-        pose_goal = geometry_msgs.msg.Pose()
-        pose_goal.position.x = position[0]
-        pose_goal.position.y = position[1]
-        pose_goal.position.z = position[2]
-
-        pose_goal.orientation.x = quaternion[0]
-        pose_goal.orientation.y = quaternion[1]
-        pose_goal.orientation.z = quaternion[2]
-        pose_goal.orientation.w = quaternion[3]
-
-        self.move_group.set_pose_target(pose_goal)
-        success = self.move_group.go(wait=True)
-        self.move_group.stop()
-        self.move_group.clear_pose_targets()
-
-        # 清除路径约束
-        self.clear_constraints()
-
-        if success:
-            rospy.loginfo("Move successful to position: {} and RPY: {}".format(position, rpy))
-        else:
-            rospy.logwarn("Move failed. Check collision or planning constraints.")
-
-        return success
-
-    def grasp_approach(self, start_position, end_position, rpy):
-        """
-        从起始位置逐步接近目标位置，同时保持爪子的方向与目标姿态一致。
-        """
         try:
+            # 添加路径约束
+            self.add_constraints()
+
+            # 首先检查目标位置是否满足约束
+            if position[2] < 0.001:  # 检查Z轴约束
+                rospy.logerr(f"Target position z={position[2]} violates minimum height constraint")
+                return False
+
             # 将 RPY 转换为四元数
             quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
-            # 生成路径点列表
-            waypoints = []
-            step_count = 50  # 插值步数
+            pose_goal = geometry_msgs.msg.Pose()
+            pose_goal.position.x = position[0]
+            pose_goal.position.y = position[1]
+            pose_goal.position.z = position[2]
+            pose_goal.orientation.x = quaternion[0]
+            pose_goal.orientation.y = quaternion[1]
+            pose_goal.orientation.z = quaternion[2]
+            pose_goal.orientation.w = quaternion[3]
 
-            for i in range(step_count + 1):
-                t = i / float(step_count)
-                pose = geometry_msgs.msg.Pose()
-                pose.position.x = start_position[0] * (1 - t) + end_position[0] * t
-                pose.position.y = start_position[1] * (1 - t) + end_position[1] * t
-                pose.position.z = start_position[2] * (1 - t) + end_position[2] * t
-                pose.orientation.x = quaternion[0]
-                pose.orientation.y = quaternion[1]
-                pose.orientation.z = quaternion[2]
-                pose.orientation.w = quaternion[3]
-                waypoints.append(pose)
+            # 设置规划参数
+            self.move_group.set_planning_time(30.0)
+            self.move_group.set_num_planning_attempts(30)
+            self.move_group.set_max_velocity_scaling_factor(0.1)
+            self.move_group.set_max_acceleration_scaling_factor(0.1)
 
-            # 笛卡尔路径规划
+            self.move_group.set_pose_target(pose_goal)
+            success = self.move_group.go(wait=True)
+            
+            if not success:
+                rospy.logerr("Move planning or execution failed")
+                return False
+
+            rospy.loginfo(f"Move successful to position: {position} and RPY: {rpy}")
+            return True
+
+        except Exception as e:
+            rospy.logerr(f"Error in move operation: {e}")
+            return False
+        finally:
+            self.move_group.stop()
+            self.move_group.clear_pose_targets()
+            self.clear_constraints()
+
+    def grasp_approach(self, start_position, end_position, rpy):
+        """
+        Approach the target position from the starting position while maintaining the end-effector's orientation.
+        Use MoveIt's computeCartesianPath for Cartesian path planning.
+        """
+        try:
+            # Convert RPY (Roll, Pitch, Yaw) to quaternion
+            quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
+
+            # Set the start position and target orientation
+            start_pose = geometry_msgs.msg.Pose()
+            start_pose.position.x = start_position[0]
+            start_pose.position.y = start_position[1]
+            start_pose.position.z = start_position[2]
+            start_pose.orientation.x = quaternion[0]
+            start_pose.orientation.y = quaternion[1]
+            start_pose.orientation.z = quaternion[2]
+            start_pose.orientation.w = quaternion[3]
+
+            end_pose = geometry_msgs.msg.Pose()
+            end_pose.position.x = end_position[0]
+            end_pose.position.y = end_position[1]
+            end_pose.position.z = end_position[2]
+            end_pose.orientation.x = quaternion[0]
+            end_pose.orientation.y = quaternion[1]
+            end_pose.orientation.z = quaternion[2]
+            end_pose.orientation.w = quaternion[3]
+
+            # Set the list of waypoints (start and end poses)
+            waypoints = [start_pose, end_pose]
+
+            # Use computeCartesianPath to plan the Cartesian path
             rospy.loginfo("Planning Cartesian path...")
             (plan, fraction) = self.move_group.compute_cartesian_path(
-                waypoints,   # 路径点
-                0.01,        # 最大步长
-                True,        # 避免碰撞
-                0.0          # 跳跃阈值
+                waypoints,   # List of waypoints
+                0.1,        # Maximum step size
+                True,        # Enable collision checking
+                0.0          # Jump threshold (0.0 means no jumping)
             )
 
-            # 检查路径规划结果
+            # Check the success of the path planning
             if fraction < 1.0:
                 rospy.logwarn(f"Path planning succeeded for only {fraction * 100:.2f}% of the path")
                 return False
 
             rospy.loginfo("Path planning completed successfully!")
 
-            # 执行路径
+            # Execute the planned path
             rospy.loginfo("Executing Cartesian path...")
             success = self.move_group.execute(plan, wait=True)
 
-            # 停止和清理
+            # Stop and clean up
             self.move_group.stop()
             self.move_group.clear_pose_targets()
 
@@ -187,8 +213,9 @@ class MoveRobot:
             return success
 
         except Exception as e:
-            rospy.logerr(f"Exception in grasp_approach: {e}")
+            rospy.logerr(f"Exception in grasp_approach method: {e}")
             return False
+
 
     def get_current_pose(self):
         """获取当前爪子的位置和姿态"""
@@ -222,26 +249,26 @@ if __name__ == "__main__":
             print(current_pose)
 
         # 1. 验证约束设置
-        # robot_mover.add_constraints()
-        # if robot_mover.verify_constraints():
-        #     rospy.loginfo("Constraints set successfully")
+        robot_mover.add_constraints()
+        if robot_mover.verify_constraints():
+            rospy.loginfo("Constraints set successfully")
         
-        # # 2. 测试约束效果
-        # if robot_mover.test_constraints():
-        #     rospy.loginfo("Constraints preventing invalid movements")
+        # 2. 测试约束效果
+        if robot_mover.test_constraints():
+            rospy.loginfo("Constraints preventing invalid movements")
 
         # 初始和目标位置
         start_position = [0.4, 0, 0.5]
-        # end_position = [0.4, 0, 0.14 + 0.3]
-        end_position = [0.3, 0.0, 0.3]
-        target_rpy = [0, np.pi, np.pi / 2]
-        # target_rpy = [0, 0, 0]
-         
+        end_position = [0.3, 0.0, 0.2]  # 修改为合理的z值
+        target_rpy = [0, np.pi, np.pi]
+        robot_mover.move(end_position, target_rpy)
 
         rospy.loginfo("Starting grasp approach...")
-        robot_mover.move(end_position, target_rpy)
         # robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        
     except rospy.ROSInterruptException:
         pass
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        rospy.logerr(f"Unexpected error: {e}")

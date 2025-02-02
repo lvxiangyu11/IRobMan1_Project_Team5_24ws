@@ -62,7 +62,7 @@ def create_grasp_mesh(
     left_finger = o3d.geometry.TriangleMesh.create_box(
         width=width/2,
         height=height,
-        depth=depth
+        depth=depth*2
     )
     left_finger.paint_uniform_color(color_left)
     left_finger.translate((-gripper_distance-width/2, 0, 0) + center_point)
@@ -74,7 +74,7 @@ def create_grasp_mesh(
     right_finger = o3d.geometry.TriangleMesh.create_box(
         width=width/2,
         height=height,
-        depth=depth
+        depth=depth*2
     )
     right_finger.paint_uniform_color(color_right)
     right_finger.translate((gripper_distance, 0, 0) + center_point)
