@@ -30,7 +30,7 @@ class MoveRobot:
             raise
 
     def add_constraints(self):
-        """添加路径约束，限制机器人在 z > 0.01 的区域内活动"""
+        """添加路径约束，限制机器人在 z > 0.001 的区域内活动"""
         constraints = moveit_commander.Constraints()
 
         # 创建位置约束
@@ -60,7 +60,7 @@ class MoveRobot:
         # 设置路径约束
         self.move_group.set_path_constraints(constraints)
         
-        rospy.loginfo("Constraints added: z > 0.01")
+        rospy.loginfo("Constraints added: z > 0.001")
 
     def verify_constraints(self):
         """验证当前设置的路径约束"""
@@ -84,16 +84,16 @@ class MoveRobot:
         test_pose = geometry_msgs.msg.Pose()
         test_pose.position.x = 0.4
         test_pose.position.y = 0.0
-        test_pose.position.z = 0.005  # 违反z>0.01的约束
+        test_pose.position.z = -0.005  # 违反z>0.001的约束
         test_pose.orientation.w = 1.0
         
         self.move_group.set_pose_target(test_pose)
         success = self.move_group.plan()[0]
         
         if not success:
-            rospy.loginfo("Constraints working - prevented planning to z < 0.01")
+            rospy.loginfo("Constraints working - prevented planning to z < 0.001")
         else:
-            rospy.logwarn("Constraints may not be working - was able to plan below z = 0.01")
+            rospy.logwarn("Constraints may not be working - was able to plan below z = 0.001")
         
         self.move_group.clear_pose_targets()
         return not success
@@ -117,6 +117,7 @@ class MoveRobot:
             # 将 RPY 转换为四元数
             quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
+            # 创建目标位姿
             pose_goal = geometry_msgs.msg.Pose()
             pose_goal.position.x = position[0]
             pose_goal.position.y = position[1]
@@ -132,11 +133,19 @@ class MoveRobot:
             self.move_group.set_max_velocity_scaling_factor(0.1)
             self.move_group.set_max_acceleration_scaling_factor(0.1)
 
+            # 设置目标位置并进行路径规划
             self.move_group.set_pose_target(pose_goal)
+            success = self.move_group.plan()  # 解包元组
+
+            if not success:
+                rospy.logerr("Motion planning failed. No valid plan generated.")
+                return False
+
+            # 执行规划路径
             success = self.move_group.go(wait=True)
             
             if not success:
-                rospy.logerr("Move planning or execution failed")
+                rospy.logerr("Move execution failed")
                 return False
 
             rospy.loginfo(f"Move successful to position: {position} and RPY: {rpy}")
@@ -146,6 +155,7 @@ class MoveRobot:
             rospy.logerr(f"Error in move operation: {e}")
             return False
         finally:
+            # 清除目标并停止运动
             self.move_group.stop()
             self.move_group.clear_pose_targets()
             self.clear_constraints()
@@ -180,6 +190,8 @@ class MoveRobot:
 
             # Set the list of waypoints (start and end poses)
             waypoints = [start_pose, end_pose]
+
+            self.move_group.set_planning_time(30.0)
 
             # Use computeCartesianPath to plan the Cartesian path
             rospy.loginfo("Planning Cartesian path...")
@@ -242,20 +254,20 @@ if __name__ == "__main__":
         robot_mover = MoveRobot()
 
         # 获取当前爪子位置
-        rospy.loginfo("Getting current pose...")
-        current_pose = robot_mover.get_current_pose()
-        if current_pose:
-            rospy.loginfo("Current position and orientation retrieved successfully.")
-            print(current_pose)
+        # rospy.loginfo("Getting current pose...")
+        # current_pose = robot_mover.get_current_pose()
+        # if current_pose:
+        #     rospy.loginfo("Current position and orientation retrieved successfully.")
+        #     print(current_pose)
 
-        # 1. 验证约束设置
-        robot_mover.add_constraints()
-        if robot_mover.verify_constraints():
-            rospy.loginfo("Constraints set successfully")
+        # # 1. 验证约束设置
+        # robot_mover.add_constraints()
+        # if robot_mover.verify_constraints():
+        #     rospy.loginfo("Constraints set successfully")
         
-        # 2. 测试约束效果
-        if robot_mover.test_constraints():
-            rospy.loginfo("Constraints preventing invalid movements")
+        # # 2. 测试约束效果
+        # if robot_mover.test_constraints():
+        #     rospy.loginfo("Constraints preventing invalid movements")
 
         # 初始和目标位置
         start_position = [0.4, 0, 0.5]
