@@ -66,8 +66,8 @@ class PointCloudSaver:
         colors = []
 
         for point in point_list:
-            if point[2] > 1.5:
-                continue
+            # if point[2] > 1.5:
+                # continue
             points.append([point[0], point[1], point[2]])  # X, Y, Z
             r, g, b = parse_rgb_float(point[3])
             colors.append([b / 255.0, g / 255.0 , r / 255.0])
@@ -82,7 +82,9 @@ class PointCloudSaver:
         rospy.loginfo(f"Color range - Min: {np.min(colors_array, axis=0)}, Max: {np.max(colors_array, axis=0)}")
 
         # Get transform
-        transform = self.get_transform('world', 'left_camera_link_optical')
+        # transform = self.get_transform('world', 'left_camera_link_optical')   # in gazebo 
+        transform = self.get_transform('world', 'zed2_left_camera_frame')     # in real world
+        print(transform)
         if transform is None:
             rospy.logerr("Failed to get transform to world frame!")
             return
@@ -106,13 +108,6 @@ class PointCloudSaver:
         o3d.io.write_point_cloud(world_path, transformed_point_cloud)
         rospy.loginfo(f"Transformed point cloud saved to {world_path}")
 
-    def project_to_image(self, point, K):
-        # 将3D点投影到2D图像坐标系
-        X, Y, Z = point
-        uvw = np.dot(K, np.array([X, Y, Z]))
-        u, v = uvw[0] / uvw[2], uvw[1] / uvw[2]
-        return u, v
-
     def transform_point_cloud(self, points, colors, transform):
         translation = np.array([transform.transform.translation.x,
                                  transform.transform.translation.y,
@@ -121,6 +116,7 @@ class PointCloudSaver:
                              transform.transform.rotation.x,
                              transform.transform.rotation.y,
                              transform.transform.rotation.z])
+
 
         transformation_matrix = np.eye(4)
         transformation_matrix[:3, :3] = o3d.geometry.get_rotation_matrix_from_quaternion(rotation)
@@ -132,7 +128,7 @@ class PointCloudSaver:
         point_cloud.colors = o3d.utility.Vector3dVector(np.array(colors))
 
         # Apply transform to the point cloud
-        point_cloud.transform(transformation_matrix)
+        # point_cloud.transform(transformation_matrix)
         return point_cloud
 
 
