@@ -40,7 +40,7 @@ class MyGripper:
         self.grasp_client.send_goal(goal)
         self.grasp_client.wait_for_result()
         result = self.grasp_client.get_result()
-
+        print(result)
         if result.success:
             rospy.loginfo("Grasp successful.")
         else:
@@ -73,11 +73,11 @@ if __name__ == "__main__":
     try:
         gripper = MyGripper()
 
-        rospy.loginfo("Closing gripper...")
-        # gripper.close(width=0.05, inner=0.01, outer=0.01, speed=0.1, force=5.0)
+        # rospy.loginfo("Closing gripper...")
+        # gripper.close(width=0.03, inner=0.02, outer=0.02, speed=1, force=0.1)
 
-        rospy.loginfo("Opening gripper...")
-        gripper.open(width=0.08, speed=0.1)
+        # rospy.loginfo("Opening gripper...")
+        gripper.open(width=0.04, speed=0.1)
 
     except rospy.ROSInterruptException:
         rospy.logerr("ROS node interrupted.")
