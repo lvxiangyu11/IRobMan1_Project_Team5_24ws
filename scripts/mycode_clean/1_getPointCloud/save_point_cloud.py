@@ -82,6 +82,7 @@ class PointCloudSaver:
         rospy.loginfo(f"Color range - Min: {np.min(colors_array, axis=0)}, Max: {np.max(colors_array, axis=0)}")
 
         # Get transform
+        # TODO: point cloud right 
         transform = self.get_transform('world', 'left_camera_link_optical')
         if transform is None:
             rospy.logerr("Failed to get transform to world frame!")
