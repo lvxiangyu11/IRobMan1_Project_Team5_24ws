@@ -7,7 +7,7 @@ from mymove import MoveRobot
 import time
 
 class PickAndPlace:
-    def __init__(self, approach_distance=0.3):
+    def __init__(self, approach_distance=0.15):
         self.robot_mover = MoveRobot()
         self.gripper = MyGripper()
         self.approach_distance = approach_distance
@@ -22,12 +22,12 @@ class PickAndPlace:
 
             # 移动到物体上方高位置
             high_pick_pos = self._calculate_approach_position(pick_pos)
-            self.robot_mover.move(high_pick_pos, pick_rpy)
+            self.robot_mover.move(high_pick_pos, pick_rpy, 0.2)
             time.sleep(0.2)
 
             # 移动到物体位置
             # self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy)
-            self.robot_mover.move(pick_pos, pick_rpy)
+            self.robot_mover.move(pick_pos, pick_rpy, 0.2)
             time.sleep(0.3)
 
             # 闭合夹爪
@@ -43,7 +43,7 @@ class PickAndPlace:
             # 移动到放置高位置
             high_place_pos = self._calculate_approach_position(place_pos)
             # self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
-            self.robot_mover.move(high_place_pos, place_rpy)
+            self.robot_mover.move(high_place_pos, place_rpy, 0.2)
             time.sleep(0.5)
 
             # 移动到放置位置

@@ -185,7 +185,7 @@ table_zlim=[0.1, 0.2]
 # table_ylim=[-0.2, 0.2]
 # table_zlim=[0.1, 0.2]
 # table surface pose
-xpose=0.5
+xpose=0.6
 ypose=0
 zpose=0
 
@@ -199,24 +199,24 @@ for i in range(28):
   except rospy.ServiceException as e:
     rospy.logwarn(f"Failed to delete model {model_name}, it might not exist: {e}")
 
-offset = 0.06
-for i in range(10):
+offset = 0.10
+for i in range(6):
   print("create_cubes:", i)
   position=[xpose + random.uniform(*table_xlim),
             ypose + random.uniform(*table_ylim),
             zpose + random.uniform(*table_zlim)
   ]
-  orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
-  # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-0.1,0.1)]
-  # position=[xpose+0.10 ,
-  #           ypose+ i*offset-0.5,
-  #           zpose
-  # ]
-  # orientation=[0, 0, -np.pi/2]
+  # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
+  orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-0.1,0.1)]
+  position=[xpose+0.10 ,
+            ypose+ i*offset-0.5,
+            zpose
+  ]
+  orientation=[0, 0, -np.pi/2]
   spawn(i, position, orientation)
 
-# for i in range(14):
-#   print("create_cubes:", (i+14))
+# for i in range(10):
+#   print("create_cubes:", (i+10))
 #   # position=[xpose + random.uniform(*table_xlim),
 #   #           ypose + random.uniform(*table_ylim),
 #   #           zpose + random.uniform(*table_zlim)
@@ -227,4 +227,18 @@ for i in range(10):
 #             zpose
 #   ]
 #   orientation=[0, 0, -np.pi/2]
-#   spawn((i+14), position, orientation)
+#   spawn((i+10), position, orientation)
+
+# for i in range(10):
+#   print("create_cubes:", (i+19))
+#   # position=[xpose + random.uniform(*table_xlim),
+#   #           ypose + random.uniform(*table_ylim),
+#   #           zpose + random.uniform(*table_zlim)
+#   # ]
+#   # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
+#   position=[xpose-0.10 ,
+#             ypose+ i*offset-0.5,
+#             zpose
+#   ]
+#   orientation=[0, 0, -np.pi/2]
+#   spawn((i+19), position, orientation)

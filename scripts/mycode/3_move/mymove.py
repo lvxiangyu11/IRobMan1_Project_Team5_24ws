@@ -29,8 +29,8 @@ class MoveRobot:
             rospy.logerr(f"Error initializing MoveRobot: {e}")
             raise
 
-    def add_constraints(self):
-        """添加路径约束，限制机器人在 z > 0.001 的区域内活动"""
+    def add_constraints(self, z_min=0.001):
+        """添加路径约束，限制机器人在 z > z_min 的区域内活动"""
         constraints = moveit_commander.Constraints()
 
         # 创建位置约束
@@ -45,7 +45,7 @@ class MoveRobot:
 
         # 设置约束框的位置，确保z坐标大于0.001
         box_pose = geometry_msgs.msg.Pose()
-        box_pose.position.z = 0.001  # 设置约束区域的底部z坐标为0.001
+        box_pose.position.z = z_min  # 设置约束区域的底部z坐标为0.001
         box_pose.orientation.w = 1.0
 
         # 将约束区域和位姿添加到位置约束
@@ -55,12 +55,12 @@ class MoveRobot:
 
         # 将位置约束添加到约束集
         constraints.position_constraints.append(position_constraint)
-        constraints.name = "z_above_0.001"
+        constraints.name = "z_above_0.001"+str(z_min)
 
         # 设置路径约束
         self.move_group.set_path_constraints(constraints)
         
-        rospy.loginfo("Constraints added: z > 0.001")
+        rospy.loginfo("Constraints added: z > "+str(z_min))
 
     def verify_constraints(self):
         """验证当前设置的路径约束"""
@@ -103,11 +103,11 @@ class MoveRobot:
         self.move_group.clear_path_constraints()
         rospy.loginfo("Path constraints cleared.")
 
-    def move(self, position, rpy):
+    def move(self, position, rpy, z_min=0.001):
         """根据目标位置和姿态移动机器人"""
         try:
             # 添加路径约束
-            self.add_constraints()
+            self.add_constraints(z_min)
 
             # 首先检查目标位置是否满足约束
             if position[2] < 0.001:  # 检查Z轴约束
@@ -128,7 +128,7 @@ class MoveRobot:
             pose_goal.orientation.w = quaternion[3]
 
             # 设置规划参数
-            self.move_group.set_planning_time(30.0)
+            self.move_group.set_planning_time(5.0)
             self.move_group.set_num_planning_attempts(30)
             self.move_group.set_max_velocity_scaling_factor(0.1)
             self.move_group.set_max_acceleration_scaling_factor(0.1)
@@ -160,10 +160,11 @@ class MoveRobot:
             self.move_group.clear_pose_targets()
             self.clear_constraints()
 
-    def grasp_approach(self, start_position, end_position, rpy):
+    def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10):
         """
         Approach the target position from the starting position while maintaining the end-effector's orientation.
         Use MoveIt's computeCartesianPath for Cartesian path planning.
+        If path planning fails, retry up to max_retries times.
         """
         try:
             # Convert RPY (Roll, Pitch, Yaw) to quaternion
@@ -191,38 +192,54 @@ class MoveRobot:
             # Set the list of waypoints (start and end poses)
             waypoints = [start_pose, end_pose]
 
-            self.move_group.set_planning_time(30.0)
+            self.move_group.set_planning_time(5.0)
 
-            # Use computeCartesianPath to plan the Cartesian path
-            rospy.loginfo("Planning Cartesian path...")
-            (plan, fraction) = self.move_group.compute_cartesian_path(
-                waypoints,   # List of waypoints
-                0.1,        # Maximum step size
-                True,        # Enable collision checking
-                0.0          # Jump threshold (0.0 means no jumping)
-            )
+            # Retry logic for planning
+            for attempt in range(max_retries):
+                rospy.loginfo(f"Attempt {attempt + 1} to plan Cartesian path...")
+                # Use computeCartesianPath to plan the Cartesian path
+                (plan, fraction) = self.move_group.compute_cartesian_path(
+                    waypoints,   # List of waypoints
+                    0.1,         # Maximum step size
+                    True,        # Enable collision checking
+                    0.0          # Jump threshold (0.0 means no jumping)
+                )
 
-            # Check the success of the path planning
-            if fraction < 1.0:
-                rospy.logwarn(f"Path planning succeeded for only {fraction * 100:.2f}% of the path")
+                # Check the success of the path planning
+                if fraction >= 1.0:
+                    rospy.loginfo("Path planning completed successfully!")
+                    break
+                else:
+                    rospy.logwarn(f"Path planning succeeded for only {fraction * 100:.2f}% of the path")
+                    if attempt == max_retries - 1:
+                        rospy.logerr("Maximum retries reached. Path planning failed.")
+                        return False
+                    rospy.loginfo("Retrying path planning...")
+
+            # Execute the planned path if successful
+            if fraction >= 1.0:
+                rospy.loginfo("Executing Cartesian path...")
+                success = self.move_group.execute(plan, wait=True)
+
+                # Stop and clean up
+                self.move_group.stop()
+                self.move_group.clear_pose_targets()
+
+                if success:
+                    rospy.loginfo("Grasp approach executed successfully.")
+                else:
+                    rospy.logwarn("Grasp approach execution failed.")
+                    return False
+            else:
+                rospy.logerr("Path planning failed after multiple retries.")
                 return False
 
-            rospy.loginfo("Path planning completed successfully!")
-
-            # Execute the planned path
-            rospy.loginfo("Executing Cartesian path...")
-            success = self.move_group.execute(plan, wait=True)
-
-            # Stop and clean up
-            self.move_group.stop()
-            self.move_group.clear_pose_targets()
-
-            if success:
-                rospy.loginfo("Grasp approach executed successfully.")
-            else:
-                rospy.logwarn("Grasp approach execution failed.")
-
             return success
+
+        except Exception as e:
+            rospy.logerr(f"Exception in grasp_approach method: {e}")
+            return False
+
 
         except Exception as e:
             rospy.logerr(f"Exception in grasp_approach method: {e}")
