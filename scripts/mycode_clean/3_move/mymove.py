@@ -23,6 +23,9 @@ class MoveRobot:
             self.robot = moveit_commander.RobotCommander()
             self.group_name = "panda_manipulator"  # Adjust according to your robot
             self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
+            # Save the initial joint state
+            self.initial_joint_state = self.move_group.get_current_joint_values()
+            rospy.loginfo(f"Initial joint state saved: {self.initial_joint_state}")
             # self.add_constraints()
             rospy.loginfo("MoveRobot initialized successfully.")
         except Exception as e:
