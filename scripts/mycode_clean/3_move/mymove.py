@@ -163,6 +163,15 @@ class MoveRobot:
             self.move_group.clear_pose_targets()
             self.clear_constraints()
 
+    def recover_to_initial_state(self):
+        """Moves the arm back to its initial state."""
+        rospy.loginfo("Recovering to initial state...")
+        self.move_group.set_joint_value_target(self.initial_joint_state)
+        success = self.move_group.go(wait=True)
+        self.move_group.stop()
+        rospy.loginfo("Recovery completed." if success else "Recovery failed!")
+        return success
+
     def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10):
         """
         Approach the target position from the starting position while maintaining the end-effector's orientation.
