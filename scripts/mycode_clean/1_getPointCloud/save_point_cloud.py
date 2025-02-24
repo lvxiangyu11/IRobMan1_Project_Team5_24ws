@@ -83,13 +83,17 @@ class PointCloudSaver:
 
         # Get transform
         # TODO: point cloud right 
-        transform = self.get_transform('world', 'left_camera_link_optical')
+        # transform = self.get_transform('world', 'left_camera_link_optical') # in simulator
+        # transform = self.get_transform('world', 'zed2_left_camera_frame')
+        transform = self.get_transform('zed2_left_camera_optical_frame', 'zed2_left_camera_frame')
+        transform2 = self.get_transform('world', 'zed2_left_camera_optical_frame')
         if transform is None:
             rospy.logerr("Failed to get transform to world frame!")
             return
 
         # Transform point cloud to world coordinate frame
         transformed_point_cloud = self.transform_point_cloud(points, colors, transform)
+        transformed_point_cloud = self.transform_point_cloud(transformed_point_cloud, colors, transform2)
 
         # Debugging: check if the point cloud is empty or not
         # num_points = len(np.asarray(transformed_point_cloud.points))
