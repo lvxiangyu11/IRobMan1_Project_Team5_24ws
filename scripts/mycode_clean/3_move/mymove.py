@@ -23,92 +23,86 @@ class MoveRobot:
             self.robot = moveit_commander.RobotCommander()
             self.group_name = "panda_manipulator"  # Adjust according to your robot
             self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
-            # self.add_constraints()
+            self.add_table()
+            self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi/5)
+            self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi/5)
             rospy.loginfo("MoveRobot initialized successfully.")
         except Exception as e:
             rospy.logerr(f"Error initializing MoveRobot: {e}")
             raise
 
-    def add_constraints(self, z_min=0.001):
-        """Add path constraints to restrict the robot's movement to the region where z > z_min"""
-        constraints = moveit_commander.Constraints()
+    def add_wall(self, wall_name="wall", wall_position=[2.0, 0.0, 1.0], theta=np.pi/5):
+        """Add a wall (box) object with rotation, position, and custom name"""
+        try:
+            # Define the wall's size
+            wall_size = [0.1, 3.0, 1.0]  # Wall is 0.1m thick, 5m long, 2m high
+            wall_pose = geometry_msgs.msg.Pose()
 
-        # Create position constraint
-        position_constraint = moveit_msgs.msg.PositionConstraint()
-        position_constraint.header.frame_id = self.move_group.get_planning_frame()
-        position_constraint.link_name = self.move_group.get_end_effector_link()
+            # Set wall's position
+            wall_pose.position.x = wall_position[0]  # x position from parameter
+            wall_pose.position.y = wall_position[1]  # y position from parameter
+            wall_pose.position.z = wall_position[2]  # z position from parameter
 
-        # Define the region for the position constraint
-        constraint_region = shape_msgs.msg.SolidPrimitive()
-        constraint_region.type = shape_msgs.msg.SolidPrimitive.BOX
-        constraint_region.dimensions = [float('inf'), float('inf'), float('inf')]  # Only restrict the Z direction's minimum size
+            # Convert rotation angle theta (in radians) to quaternion
+            quaternion = quaternion_from_euler(0, 0, theta)  # Rotate around z-axis by theta
+            wall_pose.orientation.x = quaternion[0]
+            wall_pose.orientation.y = quaternion[1]
+            wall_pose.orientation.z = quaternion[2]
+            wall_pose.orientation.w = quaternion[3]
 
-        # Set the constraint box's position, ensuring that z-coordinate is greater than 0.001
-        box_pose = geometry_msgs.msg.Pose()
-        box_pose.position.z = z_min  # Set the bottom z-coordinate of the constraint region to 0.001
-        box_pose.orientation.w = 1.0
+            # Create a box primitive to represent the wall
+            wall_box = shape_msgs.msg.SolidPrimitive()
+            wall_box.type = shape_msgs.msg.SolidPrimitive.BOX
+            wall_box.dimensions = wall_size
 
-        # Add the constraint region and pose to the position constraint
-        position_constraint.constraint_region.primitives.append(constraint_region)
-        position_constraint.constraint_region.primitive_poses.append(box_pose)
-        position_constraint.weight = 1.0
+            # Create a collision object for the wall
+            wall_object = moveit_commander.CollisionObject()
+            wall_object.header.frame_id = self.move_group.get_planning_frame()
+            wall_object.id = wall_name  # Set the custom name from the parameter
+            wall_object.primitives.append(wall_box)
+            wall_object.primitive_poses.append(wall_pose)
 
-        # Add position constraint to the constraints set
-        constraints.position_constraints.append(position_constraint)
-        constraints.name = "z_above_0.001" + str(z_min)
+            # Add the collision object (wall) to the planning scene
+            table = moveit_commander.PlanningSceneInterface()
+            table.add_object(wall_object)
+            rospy.loginfo(f"Wall '{wall_name}' added to the scene with rotation theta={theta} radians at position: {wall_pose.position.x}, {wall_pose.position.y}, {wall_pose.position.z}")
+        except Exception as e:
+            rospy.logerr(f"Error adding wall: {e}")
 
-        # Set path constraints
-        self.move_group.set_path_constraints(constraints)
-        
-        rospy.loginfo("Constraints added: z > " + str(z_min))
+    def add_table(self):
+        """Add a table (box) object to prevent the robot from moving below a certain height"""
+        try:
+            # Define the table's size and position
+            table = moveit_commander.PlanningSceneInterface()
+            table_name = "table"
+            table_size = [2.0, 2.0, 0.001]  # Table is 2m x 1m with 0.001m height
+            table_pose = geometry_msgs.msg.Pose()
+            table_pose.position.x = 0.0
+            table_pose.position.y = 0.0
+            table_pose.position.z = 0.001  # The top of the table is at z = 0.001m
 
-    def verify_constraints(self):
-        """Verify the currently set path constraints"""
-        constraints = self.move_group.get_path_constraints()
-        if constraints:
-            rospy.loginfo("Current constraints:")
-            rospy.loginfo(constraints)
-            if constraints.position_constraints:
-                rospy.loginfo("Position constraints exist")
-                return True
-        else:
-            rospy.loginfo("No constraints set")
-            return False
-        
-    def test_constraints(self):
-        """Test whether constraints are working"""
-        # Add constraints
-        self.add_constraints()
-        
-        # Try planning to a position where z < 0.01
-        test_pose = geometry_msgs.msg.Pose()
-        test_pose.position.x = 0.4
-        test_pose.position.y = 0.0
-        test_pose.position.z = -0.005  # Violating the z > 0.001 constraint
-        test_pose.orientation.w = 1.0
-        
-        self.move_group.set_pose_target(test_pose)
-        success = self.move_group.plan()[0]
-        
-        if not success:
-            rospy.loginfo("Constraints working - prevented planning to z < 0.001")
-        else:
-            rospy.logwarn("Constraints may not be working - was able to plan below z = 0.001")
-        
-        self.move_group.clear_pose_targets()
-        return not success
-    
-    def clear_constraints(self):
-        """Clear path constraints"""
-        self.move_group.clear_path_constraints()
-        rospy.loginfo("Path constraints cleared.")
+            # Create a box primitive to represent the table
+            table_box = shape_msgs.msg.SolidPrimitive()
+            table_box.type = shape_msgs.msg.SolidPrimitive.BOX
+            table_box.dimensions = table_size
+
+            # Create a collision object for the table
+            table_object = moveit_commander.CollisionObject()
+            table_object.header.frame_id = self.move_group.get_planning_frame()
+            table_object.id = table_name
+            table_object.primitives.append(table_box)
+            table_object.primitive_poses.append(table_pose)
+
+            # Apply the collision object to the planning scene
+            table.add_object(table_object)
+            rospy.loginfo(f"Table added to the scene to prevent collision below z = 0.001")
+        except Exception as e:
+            rospy.logerr(f"Error adding table: {e}")
+
 
     def move(self, position, rpy, z_min=0.001):
         """Move the robot based on the target position and orientation"""
         try:
-            # Add path constraints
-            # self.add_constraints(z_min)
-
             # First check if the target position satisfies the constraints
             if position[2] < 0.001:  # Check Z-axis constraint
                 rospy.logerr(f"Target position z={position[2]} violates minimum height constraint")
@@ -171,7 +165,6 @@ class MoveRobot:
         If path planning fails, retry up to max_retries times.
         """
         try:
-            self.add_constraints(z_min)
             # Convert RPY (Roll, Pitch, Yaw) to quaternion
             quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
@@ -276,18 +269,9 @@ if __name__ == "__main__":
         #     rospy.loginfo("Current position and orientation retrieved successfully.")
         #     print(current_pose)
 
-        # # 1. Verify constraints
-        robot_mover.add_constraints()
-        if robot_mover.verify_constraints():
-            rospy.loginfo("Constraints set successfully")
-        
-        # # 2. Test constraint effectiveness
-        if robot_mover.test_constraints():
-            rospy.loginfo("Constraints preventing invalid movements")
-
         # Initial and target positions
         start_position = [0.4, 0, 0.5]
-        end_position = [0.3, 0.0, 0.2]  # Modified to a valid z value
+        end_position = [0.3, 0.0, -0.2]  # Modified to a valid z value
         target_rpy = [0, np.pi, np.pi]
         # robot_mover.move(end_position, target_rpy)
 
