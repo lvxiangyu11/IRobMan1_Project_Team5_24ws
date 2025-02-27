@@ -17,6 +17,7 @@ class PickAndPlace:
         self, pick_pos, pick_rpy, place_pos, place_rpy  # Current position of the object
     ):  # Target position of the object
         try:
+            self.robot_mover.restore_initial_joint_values()
             # Open the gripper
             self.gripper.open(width=0.08, speed=0.1)
             time.sleep(1)
@@ -43,13 +44,13 @@ class PickAndPlace:
 
             # Move to a higher position for placing the object
             high_place_pos = self._calculate_approach_position(place_pos)
-            # self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
-            self.robot_mover.move(high_place_pos, place_rpy, 0.2)
+            self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
+            # self.robot_mover.move(high_place_pos, place_rpy, 0.2)
             time.sleep(0.5)
 
             # Move to the place position
-            # self.robot_mover.grasp_approach(high_place_pos, place_pos, place_rpy)
-            self.robot_mover.move(place_pos, place_rpy)
+            self.robot_mover.grasp_approach(high_place_pos, place_pos, place_rpy)
+            # self.robot_mover.move(place_pos, place_rpy)
             time.sleep(0.5)
 
             # Open the gripper to release the object
@@ -57,8 +58,8 @@ class PickAndPlace:
             time.sleep(0.5)
 
             # Return to the higher position after releasing the object
-            # self.robot_mover.grasp_approach(place_pos, high_place_pos, place_rpy)
-            self.robot_mover.move(high_place_pos, place_rpy)
+            self.robot_mover.grasp_approach(place_pos, high_place_pos, place_rpy)
+            # self.robot_mover.move(high_place_pos, place_rpy)
             time.sleep(0.5)
 
         except Exception as e:

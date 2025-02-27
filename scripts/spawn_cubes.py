@@ -208,10 +208,10 @@ for i in range(6):
   ]
   # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
   orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-0.1,0.1)]
-  position=[xpose+0.10 ,
-            ypose+ i*offset-0.5,
-            zpose
-  ]
+  # position=[xpose+0.10 ,
+  #           ypose+ i*offset-0.5,
+  #           zpose
+  # ]
   orientation=[0, 0, -np.pi/2]
   spawn(i, position, orientation)
 

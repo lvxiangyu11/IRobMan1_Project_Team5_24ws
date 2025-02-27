@@ -27,6 +27,7 @@ class MoveRobot:
             self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi/5)
             self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi/5)
             rospy.loginfo("MoveRobot initialized successfully.")
+            self.init_joint_values = self.get_current_joint_values()
         except Exception as e:
             rospy.logerr(f"Error initializing MoveRobot: {e}")
             raise
@@ -35,7 +36,7 @@ class MoveRobot:
         """Add a wall (box) object with rotation, position, and custom name"""
         try:
             # Define the wall's size
-            wall_size = [0.1, 3.0, 1.0]  # Wall is 0.1m thick, 5m long, 2m high
+            wall_size = [0.1, 3.0, 4.0]  # Wall is 0.1m thick, 5m long, 2m high
             wall_pose = geometry_msgs.msg.Pose()
 
             # Set wall's position
@@ -75,7 +76,7 @@ class MoveRobot:
             # Define the table's size and position
             table = moveit_commander.PlanningSceneInterface()
             table_name = "table"
-            table_size = [2.0, 2.0, 0.001]  # Table is 2m x 1m with 0.001m height
+            table_size = [4.0, 4.0, 0.001]  # Table is 2m x 1m with 0.001m height
             table_pose = geometry_msgs.msg.Pose()
             table_pose.position.x = 0.0
             table_pose.position.y = 0.0
@@ -122,7 +123,7 @@ class MoveRobot:
             pose_goal.orientation.w = quaternion[3]
 
             # Set planning parameters
-            self.move_group.set_planning_time(5.0)
+            self.move_group.set_planning_time(25.0)
             self.move_group.set_num_planning_attempts(30)
             self.move_group.set_max_velocity_scaling_factor(0.1)
             self.move_group.set_max_acceleration_scaling_factor(0.1)
@@ -131,8 +132,6 @@ class MoveRobot:
             self.move_group.set_pose_target(pose_goal)
             success = self.move_group.plan()  # Unpack tuple
             
-            self.clear_constraints()
-
             if not success:
                 rospy.logerr("Motion planning failed. No valid plan generated.")
                 return False
@@ -149,14 +148,11 @@ class MoveRobot:
 
         except Exception as e:
             rospy.logerr(f"Error in move operation: {e}")
-            self.clear_constraints()
             return False
         finally:
-            self.clear_constraints()
             # Clear targets and stop movement
             self.move_group.stop()
             self.move_group.clear_pose_targets()
-            self.clear_constraints()
 
     def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10):
         """
@@ -254,9 +250,38 @@ class MoveRobot:
             return None
 
     def __del__(self):
+        self.restore_initial_joint_values()
         moveit_commander.roscpp_shutdown()
         rospy.loginfo("MoveRobot shut down.")
 
+    def get_current_joint_values(self):
+        """获取机器人的当前关节配置"""
+        try:
+            joint_values = self.move_group.get_current_joint_values()
+            rospy.loginfo(f"Current joint values: {joint_values}")
+            return joint_values
+        except Exception as e:
+            rospy.logerr(f"Failed to get current joint values: {e}")
+            return None
+
+    def restore_initial_joint_values(self):
+        """恢复到初始关节配置"""
+        try:
+            if self.init_joint_values is not None:
+                rospy.loginfo("Restoring to initial joint values...")
+                # 设置目标关节配置
+                self.move_group.set_joint_value_target(self.init_joint_values)
+                
+                # 规划并执行动作
+                success = self.move_group.go(wait=True)
+                if success:
+                    rospy.loginfo("Successfully restored to the initial joint configuration.")
+                else:
+                    rospy.logerr("Failed to restore to initial joint configuration.")
+            else:
+                rospy.logerr("Initial joint values are not defined.")
+        except Exception as e:
+            rospy.logerr(f"Error restoring initial joint values: {e}")
 
 if __name__ == "__main__":
     try:
@@ -271,12 +296,14 @@ if __name__ == "__main__":
 
         # Initial and target positions
         start_position = [0.4, 0, 0.5]
-        end_position = [0.3, 0.0, -0.2]  # Modified to a valid z value
+        end_position = [0.7, 0.0, 0.02]  # Modified to a valid z value
         target_rpy = [0, np.pi, np.pi]
-        # robot_mover.move(end_position, target_rpy)
+        # target_rpy = [-3.1386386530494828, 0.003954958007977849, -3.0987328681412816]
+        # end_position = [0.7, -0.5, 0.02]
+        robot_mover.move(end_position, target_rpy)
 
         rospy.loginfo("Starting grasp approach...")
-        robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        # robot_mover.grasp_approach(start_position, end_position, target_rpy)
         
     except rospy.ROSInterruptException:
         pass
