@@ -9,6 +9,7 @@ import numpy as np
 import moveit_msgs.msg
 import shape_msgs.msg
 
+
 class MoveRobot:
     def __init__(self):
         # Initialize MoveIt and ROS node
@@ -24,18 +25,19 @@ class MoveRobot:
             self.group_name = "panda_manipulator"  # Adjust according to your robot
             self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
             self.add_table()
-            self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi/5)
-            self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi/5)
+            self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi / 5)
+            self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi / 5)
             rospy.loginfo("MoveRobot initialized successfully.")
+            self.init_joint_values = self.get_current_joint_values()
         except Exception as e:
             rospy.logerr(f"Error initializing MoveRobot: {e}")
             raise
 
-    def add_wall(self, wall_name="wall", wall_position=[2.0, 0.0, 1.0], theta=np.pi/5):
+    def add_wall(self, wall_name="wall", wall_position=[2.0, 0.0, 1.0], theta=np.pi / 5):
         """Add a wall (box) object with rotation, position, and custom name"""
         try:
             # Define the wall's size
-            wall_size = [0.1, 3.0, 1.0]  # Wall is 0.1m thick, 5m long, 2m high
+            wall_size = [0.1, 3.0, 4.0]  # Wall is 0.1m thick, 5m long, 2m high
             wall_pose = geometry_msgs.msg.Pose()
 
             # Set wall's position
@@ -65,7 +67,8 @@ class MoveRobot:
             # Add the collision object (wall) to the planning scene
             table = moveit_commander.PlanningSceneInterface()
             table.add_object(wall_object)
-            rospy.loginfo(f"Wall '{wall_name}' added to the scene with rotation theta={theta} radians at position: {wall_pose.position.x}, {wall_pose.position.y}, {wall_pose.position.z}")
+            rospy.loginfo(
+                f"Wall '{wall_name}' added to the scene with rotation theta={theta} radians at position: {wall_pose.position.x}, {wall_pose.position.y}, {wall_pose.position.z}")
         except Exception as e:
             rospy.logerr(f"Error adding wall: {e}")
 
@@ -75,7 +78,7 @@ class MoveRobot:
             # Define the table's size and position
             table = moveit_commander.PlanningSceneInterface()
             table_name = "table"
-            table_size = [2.0, 2.0, 0.001]  # Table is 2m x 1m with 0.001m height
+            table_size = [4.0, 4.0, 0.001]  # Table is 2m x 1m with 0.001m height
             table_pose = geometry_msgs.msg.Pose()
             table_pose.position.x = 0.0
             table_pose.position.y = 0.0
@@ -99,7 +102,6 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error adding table: {e}")
 
-
     def move(self, position, rpy, z_min=0.001):
         """Move the robot based on the target position and orientation"""
         try:
@@ -122,24 +124,22 @@ class MoveRobot:
             pose_goal.orientation.w = quaternion[3]
 
             # Set planning parameters
-            self.move_group.set_planning_time(5.0)
+            self.move_group.set_planning_time(25.0)
             self.move_group.set_num_planning_attempts(30)
             self.move_group.set_max_velocity_scaling_factor(0.1)
             self.move_group.set_max_acceleration_scaling_factor(0.1)
 
             # Set target position and plan the path
             self.move_group.set_pose_target(pose_goal)
-            success = self.move_group.plan()  # Unpack tuple
-            
-            self.clear_constraints()
-
-            if not success:
+            # Change: Fix plan return value handling to ensure valid plans and avoid wall collisions
+            plan, error_code = self.move_group.plan()
+            if not plan or error_code.val != 1:  # Success code is 1
                 rospy.logerr("Motion planning failed. No valid plan generated.")
                 return False
 
             # Execute the planned path
             success = self.move_group.go(wait=True)
-            
+
             if not success:
                 rospy.logerr("Move execution failed")
                 return False
@@ -149,14 +149,11 @@ class MoveRobot:
 
         except Exception as e:
             rospy.logerr(f"Error in move operation: {e}")
-            self.clear_constraints()
             return False
         finally:
-            self.clear_constraints()
             # Clear targets and stop movement
             self.move_group.stop()
             self.move_group.clear_pose_targets()
-            self.clear_constraints()
 
     def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10):
         """
@@ -165,6 +162,11 @@ class MoveRobot:
         If path planning fails, retry up to max_retries times.
         """
         try:
+            # Change: Add z_min checks for start_position and end_position to prevent low movements near walls
+            if start_position[2] < z_min or end_position[2] < z_min:
+                rospy.logerr("Start or end position violates z_min constraint")
+                return False
+
             # Convert RPY (Roll, Pitch, Yaw) to quaternion
             quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
@@ -195,12 +197,12 @@ class MoveRobot:
             # Retry logic for planning
             for attempt in range(max_retries):
                 rospy.loginfo(f"Attempt {attempt + 1} to plan Cartesian path...")
-                # Use computeCartesianPath to plan the Cartesian path
+                # Change: Reduce step size for better collision checking with walls
                 (plan, fraction) = self.move_group.compute_cartesian_path(
-                    waypoints,   # List of waypoints
-                    0.1,         # Maximum step size
-                    True,        # Enable collision checking
-                    0.0          # Jump threshold (0.0 means no jumping)
+                    waypoints,  # List of waypoints
+                    0.02,  # Reduced from 0.1 to 0.02 for finer collision detection
+                    True,  # Enable collision checking
+                    0.0  # Jump threshold (0.0 means no jumping)
                 )
 
                 # Check the success of the path planning
@@ -244,40 +246,64 @@ class MoveRobot:
             current_pose = self.move_group.get_current_pose().pose
             position = current_pose.position
             orientation = current_pose.orientation
-            rospy.loginfo("Current pose: Position({:.3f}, {:.3f}, {:.3f}), Orientation({:.3f}, {:.3f}, {:.3f}, {:.3f})".format(
-                position.x, position.y, position.z,
-                orientation.x, orientation.y, orientation.z, orientation.w
-            ))
+            rospy.loginfo(
+                "Current pose: Position({:.3f}, {:.3f}, {:.3f}), Orientation({:.3f}, {:.3f}, {:.3f}, {:.3f})".format(
+                    position.x, position.y, position.z,
+                    orientation.x, orientation.y, orientation.z, orientation.w
+                ))
             return current_pose
         except Exception as e:
             rospy.logerr(f"Failed to get current pose: {e}")
             return None
 
     def __del__(self):
+        self.restore_initial_joint_values()
         moveit_commander.roscpp_shutdown()
         rospy.loginfo("MoveRobot shut down.")
+
+    def get_current_joint_values(self):
+        """获取机器人的当前关节配置"""
+        try:
+            joint_values = self.move_group.get_current_joint_values()
+            rospy.loginfo(f"Current joint values: {joint_values}")
+            return joint_values
+        except Exception as e:
+            rospy.logerr(f"Failed to get current joint values: {e}")
+            return None
+
+    def restore_initial_joint_values(self):
+        """恢复到初始关节配置"""
+        try:
+            if self.init_joint_values is not None:
+                rospy.loginfo("Restoring to initial joint values...")
+                # 设置目标关节配置
+                self.move_group.set_joint_value_target(self.init_joint_values)
+
+                # 规划并执行动作
+                success = self.move_group.go(wait=True)
+                if success:
+                    rospy.loginfo("Successfully restored to the initial joint configuration.")
+                else:
+                    rospy.logerr("Failed to restore to initial joint configuration.")
+            else:
+                rospy.logerr("Initial joint values are not defined.")
+        except Exception as e:
+            rospy.logerr(f"Error restoring initial joint values: {e}")
 
 
 if __name__ == "__main__":
     try:
         robot_mover = MoveRobot()
 
-        # Get current end effector pose
-        # rospy.loginfo("Getting current pose...")
-        # current_pose = robot_mover.get_current_pose()
-        # if current_pose:
-        #     rospy.loginfo("Current position and orientation retrieved successfully.")
-        #     print(current_pose)
-
         # Initial and target positions
         start_position = [0.4, 0, 0.5]
-        end_position = [0.3, 0.0, -0.2]  # Modified to a valid z value
+        end_position = [0.7, 0.0, 0.02]  # Modified to a valid z value
         target_rpy = [0, np.pi, np.pi]
-        # robot_mover.move(end_position, target_rpy)
+        robot_mover.move(end_position, target_rpy)
 
         rospy.loginfo("Starting grasp approach...")
-        robot_mover.grasp_approach(start_position, end_position, target_rpy)
-        
+        # robot_mover.grasp_approach(start_position, end_position, target_rpy)
+
     except rospy.ROSInterruptException:
         pass
     except KeyboardInterrupt:
