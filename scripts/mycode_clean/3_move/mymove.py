@@ -124,15 +124,15 @@ class MoveRobot:
             pose_goal.orientation.w = quaternion[3]
 
             # Set planning parameters
-            self.move_group.set_planning_time(25.0)
+            self.move_group.set_planning_time(10.0)
             self.move_group.set_num_planning_attempts(30)
-            self.move_group.set_max_velocity_scaling_factor(0.1)
-            self.move_group.set_max_acceleration_scaling_factor(0.1)
+            self.move_group.set_max_velocity_scaling_factor(1)
+            self.move_group.set_max_acceleration_scaling_factor(1)
 
             # Set target position and plan the path
             self.move_group.set_pose_target(pose_goal)
             # Change: Fix plan return value handling to ensure valid plans and avoid wall collisions
-            plan, error_code = self.move_group.plan()
+            plan, trajectory, plantime, error_code = self.move_group.plan()
             if not plan or error_code.val != 1:  # Success code is 1
                 rospy.logerr("Motion planning failed. No valid plan generated.")
                 return False
@@ -298,7 +298,14 @@ if __name__ == "__main__":
         # Initial and target positions
         start_position = [0.4, 0, 0.5]
         end_position = [0.7, 0.0, 0.02]  # Modified to a valid z value
-        target_rpy = [0, np.pi, np.pi]
+        # pick_rpy, pick_pos
+        # ([0.0, 0.0, 0.6429928816452974],
+        # [0.3936141102195277, 0.1118674722427118, 0.024750046723177994])
+        end_position = [0.3936141102195277, 0.1118674722427118, 0.024750046723177994+0.2]
+        # target_rpy = [0.0, 0.0, 0.6429928816452974]
+        target_rpy = [0.0, np.pi, 0.6429928816452974]
+        # target_rpy = [0, np.pi, np.pi]
+
         robot_mover.move(end_position, target_rpy)
 
         rospy.loginfo("Starting grasp approach...")
