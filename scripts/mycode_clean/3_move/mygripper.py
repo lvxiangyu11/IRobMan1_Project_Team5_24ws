@@ -6,7 +6,7 @@ from franka_gripper.msg import GraspAction, GraspGoal, MoveAction, MoveGoal
 
 
 class MyGripper:
-    def __init__(self):
+    def __init__(self, restart=False):
         """Initialize the Gripper controller"""
         # Check if ROS node has been initialized
         if not rospy.core.is_initialized():

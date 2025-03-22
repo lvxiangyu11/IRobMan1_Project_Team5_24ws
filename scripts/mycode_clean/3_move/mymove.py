@@ -8,6 +8,79 @@ from tf.transformations import quaternion_from_euler
 import numpy as np
 import moveit_msgs.msg
 import shape_msgs.msg
+import visualization_msgs.msg
+import geometry_msgs.msg
+import tf
+
+class TargetFrameBroadcaster:
+    def __init__(self, reference_frame="world", target_frame="target_frame"):
+        """
+        Initializes the TargetFrameBroadcaster.
+        :param reference_frame: The reference frame (default: "world")
+        :param target_frame: The target frame to broadcast (default: "target_frame")
+        """
+        self.reference_frame = reference_frame
+        self.target_frame = target_frame
+        
+        # 创建tf广播器
+        self.tf_broadcaster = tf.TransformBroadcaster()
+
+        # 初始化目标位置和姿态
+        self.last_position = [0.0, 0.0, 0.0]  # 初始位置
+        self.last_quaternion = [0.0, 0.0, 0.0, 1.0]  # 初始姿态（单位四元数）
+        self.target_position = self.last_position
+        self.target_quaternion = self.last_quaternion
+
+        # 设置定时器，每秒发布一次目标位置
+        self.timer = rospy.Timer(rospy.Duration(0.1), self.publish_target_transform)
+
+    def publish_target_transform(self, event):
+        """每秒发布目标位置和姿态"""
+        try:
+            # 如果目标位置发生变化，则更新
+            if not np.array_equal(self.target_position, self.last_position) or not np.array_equal(self.target_quaternion, self.last_quaternion):
+                # 发布目标坐标变换
+                self.tf_broadcaster.sendTransform(
+                    (self.target_position[0], self.target_position[1], self.target_position[2]),
+                    self.target_quaternion,
+                    rospy.Time.now(),
+                    self.target_frame,  # 目标坐标系
+                    self.reference_frame  # 参考坐标系（例如 "world"）
+                )
+                # 更新之前的目标位置和姿态
+                self.last_position = self.target_position
+                self.last_quaternion = self.target_quaternion
+            else:
+                # 如果没有更新，继续发布之前的数据
+                self.tf_broadcaster.sendTransform(
+                    (self.last_position[0], self.last_position[1], self.last_position[2]),
+                    self.last_quaternion,
+                    rospy.Time.now(),
+                    self.target_frame,
+                    self.reference_frame
+                )
+        except Exception as e:
+            rospy.logerr(f"Failed to publish target transform: {e}")
+
+    def update_target(self, position, rpy):
+        """更新目标位置和姿态"""
+        try:
+            # 将RPY角度转换为四元数
+            quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
+
+            # 更新目标位置和姿态
+            self.target_position = position
+            self.target_quaternion = quaternion
+
+            rospy.loginfo(f"Target position set to: {position} and RPY: {rpy}")
+            return True
+        except Exception as e:
+            rospy.logerr(f"Error in update_target operation: {e}")
+            return False
+
+    def stop(self):
+        """停止定时器"""
+        self.timer.shutdown()
 
 
 class MoveRobot:
@@ -25,13 +98,18 @@ class MoveRobot:
             self.group_name = "panda_manipulator"  # Adjust according to your robot
             self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
             self.add_table()
-            self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi / 5)
-            self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi / 5)
+            self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi / 4)
+            self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi / 4)
             rospy.loginfo("MoveRobot initialized successfully.")
             self.init_joint_values = self.get_current_joint_values()
         except Exception as e:
             rospy.logerr(f"Error initializing MoveRobot: {e}")
             raise
+        self.gazebo_init_joints_c = [0.00020990855484193105, -0.7795008908903167, 0.00010624718470086947, -2.3667376031479828, -0.0002316322324373843, 1.573599783202095, 0.7853073403622508]
+        
+        # 初始化TargetFrameBroadcaster
+        self.target_broadcaster = TargetFrameBroadcaster(reference_frame="world", target_frame="target_frame")
+
 
     def add_wall(self, wall_name="wall", wall_position=[2.0, 0.0, 1.0], theta=np.pi / 5):
         """Add a wall (box) object with rotation, position, and custom name"""
@@ -72,17 +150,16 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error adding wall: {e}")
 
-    def add_table(self):
+    def add_table(self,table_name="fixed_table", z=0.001):
         """Add a table (box) object to prevent the robot from moving below a certain height"""
         try:
             # Define the table's size and position
             table = moveit_commander.PlanningSceneInterface()
-            table_name = "table"
             table_size = [4.0, 4.0, 0.001]  # Table is 2m x 1m with 0.001m height
             table_pose = geometry_msgs.msg.Pose()
             table_pose.position.x = 0.0
             table_pose.position.y = 0.0
-            table_pose.position.z = 0.001  # The top of the table is at z = 0.001m
+            table_pose.position.z = z
 
             # Create a box primitive to represent the table
             table_box = shape_msgs.msg.SolidPrimitive()
@@ -102,14 +179,26 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error adding table: {e}")
 
-    def move(self, position, rpy, z_min=0.001):
+    def remove_table(self, table_name="constraint_table"):
+        """Remove the table (or any object) from the planning scene"""
+        try:
+            planning_scene = moveit_commander.PlanningSceneInterface()
+            planning_scene.remove_world_object(table_name)  # Remove the table by its name
+            rospy.loginfo(f"Table '{table_name}' removed from the planning scene.")
+        except Exception as e:
+            rospy.logerr(f"Error removing table: {e}")
+
+    def move(self, position, rpy, add_privant_table=True):
         """Move the robot based on the target position and orientation"""
         try:
+            # 防止撞倒其他cube！
+            if add_privant_table:
+                self.add_table("constraint_table", 0.06)
             # First check if the target position satisfies the constraints
             if position[2] < 0.001:  # Check Z-axis constraint
                 rospy.logerr(f"Target position z={position[2]} violates minimum height constraint")
                 return False
-
+            self.target_broadcaster.update_target(position, rpy)
             # Convert RPY to quaternion
             quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
 
@@ -124,7 +213,7 @@ class MoveRobot:
             pose_goal.orientation.w = quaternion[3]
 
             # Set planning parameters
-            self.move_group.set_planning_time(10.0)
+            self.move_group.set_planning_time(5.0)
             self.move_group.set_num_planning_attempts(30)
             self.move_group.set_max_velocity_scaling_factor(1)
             self.move_group.set_max_acceleration_scaling_factor(1)
@@ -132,9 +221,10 @@ class MoveRobot:
             # Set target position and plan the path
             self.move_group.set_pose_target(pose_goal)
             # Change: Fix plan return value handling to ensure valid plans and avoid wall collisions
-            plan, trajectory, plantime, error_code = self.move_group.plan()
+            plan, _, _, error_code = self.move_group.plan()
             if not plan or error_code.val != 1:  # Success code is 1
                 rospy.logerr("Motion planning failed. No valid plan generated.")
+                self.remove_table("constraint_table")
                 return False
 
             # Execute the planned path
@@ -142,18 +232,23 @@ class MoveRobot:
 
             if not success:
                 rospy.logerr("Move execution failed")
+                self.remove_table("constraint_table")
                 return False
 
             rospy.loginfo(f"Move successful to position: {position} and RPY: {rpy}")
+            self.remove_table("constraint_table")
             return True
 
         except Exception as e:
             rospy.logerr(f"Error in move operation: {e}")
+            self.remove_table("constraint_table")
             return False
         finally:
             # Clear targets and stop movement
+            self.remove_table("constraint_table")
             self.move_group.stop()
             self.move_group.clear_pose_targets()
+
 
     def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10):
         """
@@ -179,6 +274,7 @@ class MoveRobot:
             start_pose.orientation.y = quaternion[1]
             start_pose.orientation.z = quaternion[2]
             start_pose.orientation.w = quaternion[3]
+            self.target_broadcaster.update_target(start_position, rpy)
 
             end_pose = geometry_msgs.msg.Pose()
             end_pose.position.x = end_position[0]
@@ -201,8 +297,7 @@ class MoveRobot:
                 (plan, fraction) = self.move_group.compute_cartesian_path(
                     waypoints,  # List of waypoints
                     0.02,  # Reduced from 0.1 to 0.02 for finer collision detection
-                    True,  # Enable collision checking
-                    0.0  # Jump threshold (0.0 means no jumping)
+                    False  # Enable collision checking
                 )
 
                 # Check the success of the path planning
@@ -215,6 +310,8 @@ class MoveRobot:
                         rospy.logerr("Maximum retries reached. Path planning failed.")
                         return False
                     rospy.loginfo("Retrying path planning...")
+            self.target_broadcaster.update_target(end_position, rpy)
+
 
             # Execute the planned path if successful
             if fraction >= 1.0:
@@ -257,7 +354,10 @@ class MoveRobot:
             return None
 
     def __del__(self):
-        self.restore_initial_joint_values()
+        if self.target_broadcaster:
+            self.target_broadcaster.stop()
+        # self.restore_initial_joint_values()
+        self.restore_init_joint_c_gazebo()
         moveit_commander.roscpp_shutdown()
         rospy.loginfo("MoveRobot shut down.")
 
@@ -290,26 +390,33 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error restoring initial joint values: {e}")
 
+    def restore_init_joint_c_gazebo(self):
+        # 恢复从gazebo的初始位置
+        self.move_group.set_joint_value_target(self.gazebo_init_joints_c)
+        success = self.move_group.go(wait=True)
+
 
 if __name__ == "__main__":
     try:
         robot_mover = MoveRobot()
+        # robot_mover.restore_init_joint_c_gazebo()
 
         # Initial and target positions
-        start_position = [0.4, 0, 0.5]
-        end_position = [0.7, 0.0, 0.02]  # Modified to a valid z value
-        # pick_rpy, pick_pos
-        # ([0.0, 0.0, 0.6429928816452974],
-        # [0.3936141102195277, 0.1118674722427118, 0.024750046723177994])
-        end_position = [0.3936141102195277, 0.1118674722427118, 0.024750046723177994+0.2]
-        # target_rpy = [0.0, 0.0, 0.6429928816452974]
-        target_rpy = [0.0, np.pi, 0.6429928816452974]
-        # target_rpy = [0, np.pi, np.pi]
+        start_position = [0.40, 0.11, 0.02]
+        end_position = [0.40, 0.11, 0.6]  # Modified to a valid z value
+        target_rpy = [0, np.pi, np.pi]
 
-        robot_mover.move(end_position, target_rpy)
+        robot_mover.move(start_position, target_rpy, add_privant_table=False)
 
-        rospy.loginfo("Starting grasp approach...")
-        # robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        # rospy.loginfo("Starting grasp approach...")
+        for i in range(10): 
+            robot_mover.grasp_approach(start_position, end_position, target_rpy)
+            robot_mover.grasp_approach(end_position, start_position, target_rpy)
+
+
+        # while True:
+        #     print("debuging! terminate the process youself per hand!")
+        #     pass
 
     except rospy.ROSInterruptException:
         pass
