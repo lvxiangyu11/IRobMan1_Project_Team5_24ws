@@ -27,8 +27,8 @@ class PickAndPlace:
             time.sleep(0.2)
 
             # Move to the object's position
-            # self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy)
-            self.robot_mover.move(pick_pos, pick_rpy, 0.2)
+            self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy)
+            # self.robot_mover.move(pick_pos, pick_rpy, 0.2)
             time.sleep(0.3)
 
             # Close the gripper
@@ -48,8 +48,8 @@ class PickAndPlace:
             time.sleep(0.5)
 
             # Move to the place position
-            # self.robot_mover.grasp_approach(high_place_pos, place_pos, place_rpy)
-            self.robot_mover.move(place_pos, place_rpy)
+            self.robot_mover.grasp_approach(high_place_pos, place_pos, place_rpy)
+            # self.robot_mover.move(place_pos, place_rpy)
             time.sleep(0.5)
 
             # Open the gripper to release the object
