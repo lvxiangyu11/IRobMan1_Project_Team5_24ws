@@ -8,10 +8,12 @@ import time
 
 
 class PickAndPlace:
-    def __init__(self, approach_distance=0.15):
+    def __init__(self, approach_distance=0.15, restart=False):
         self.robot_mover = MoveRobot()
         self.gripper = MyGripper()
         self.approach_distance = approach_distance
+        if restart:
+            self.robot_mover.restore_init_joint_c_gazebo()
 
     def pick_and_place(
         self, pick_pos, pick_rpy, place_pos, place_rpy  # Current position of the object
@@ -19,11 +21,11 @@ class PickAndPlace:
         try:
             # Open the gripper
             self.gripper.open(width=0.08, speed=0.1)
-            time.sleep(1)
+            time.sleep(0.5)
 
             # Move to a higher position above the object
             high_pick_pos = self._calculate_approach_position(pick_pos)
-            self.robot_mover.move(high_pick_pos, pick_rpy, 0.2)
+            self.robot_mover.move(high_pick_pos, pick_rpy)
             time.sleep(0.2)
 
             # Move to the object's position
@@ -44,7 +46,7 @@ class PickAndPlace:
             # Move to a higher position for placing the object
             high_place_pos = self._calculate_approach_position(place_pos)
             # self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
-            self.robot_mover.move(high_place_pos, place_rpy, 0.2)
+            self.robot_mover.move(high_place_pos, place_rpy)
             time.sleep(0.5)
 
             # Move to the place position

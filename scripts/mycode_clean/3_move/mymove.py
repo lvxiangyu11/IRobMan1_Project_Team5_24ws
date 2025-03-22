@@ -150,17 +150,16 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error adding wall: {e}")
 
-    def add_table(self):
+    def add_table(self,table_name="fixed_table", z=0.001):
         """Add a table (box) object to prevent the robot from moving below a certain height"""
         try:
             # Define the table's size and position
             table = moveit_commander.PlanningSceneInterface()
-            table_name = "table"
             table_size = [4.0, 4.0, 0.001]  # Table is 2m x 1m with 0.001m height
             table_pose = geometry_msgs.msg.Pose()
             table_pose.position.x = 0.0
             table_pose.position.y = 0.0
-            table_pose.position.z = 0.001  # The top of the table is at z = 0.001m
+            table_pose.position.z = z
 
             # Create a box primitive to represent the table
             table_box = shape_msgs.msg.SolidPrimitive()
@@ -180,9 +179,21 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error adding table: {e}")
 
-    def move(self, position, rpy, z_min=0.001):
+    def remove_table(self, table_name="constraint_table"):
+        """Remove the table (or any object) from the planning scene"""
+        try:
+            planning_scene = moveit_commander.PlanningSceneInterface()
+            planning_scene.remove_world_object(table_name)  # Remove the table by its name
+            rospy.loginfo(f"Table '{table_name}' removed from the planning scene.")
+        except Exception as e:
+            rospy.logerr(f"Error removing table: {e}")
+
+    def move(self, position, rpy, add_privant_table=True):
         """Move the robot based on the target position and orientation"""
         try:
+            # 防止撞倒其他cube！
+            if add_privant_table:
+                self.add_table("constraint_table", 0.06)
             # First check if the target position satisfies the constraints
             if position[2] < 0.001:  # Check Z-axis constraint
                 rospy.logerr(f"Target position z={position[2]} violates minimum height constraint")
@@ -213,6 +224,7 @@ class MoveRobot:
             plan, _, _, error_code = self.move_group.plan()
             if not plan or error_code.val != 1:  # Success code is 1
                 rospy.logerr("Motion planning failed. No valid plan generated.")
+                self.remove_table("constraint_table")
                 return False
 
             # Execute the planned path
@@ -220,16 +232,20 @@ class MoveRobot:
 
             if not success:
                 rospy.logerr("Move execution failed")
+                self.remove_table("constraint_table")
                 return False
 
             rospy.loginfo(f"Move successful to position: {position} and RPY: {rpy}")
+            self.remove_table("constraint_table")
             return True
 
         except Exception as e:
             rospy.logerr(f"Error in move operation: {e}")
+            self.remove_table("constraint_table")
             return False
         finally:
             # Clear targets and stop movement
+            self.remove_table("constraint_table")
             self.move_group.stop()
             self.move_group.clear_pose_targets()
 
@@ -280,7 +296,7 @@ class MoveRobot:
                 # Change: Reduce step size for better collision checking with walls
                 (plan, fraction) = self.move_group.compute_cartesian_path(
                     waypoints,  # List of waypoints
-                    0.2,  # Reduced from 0.1 to 0.02 for finer collision detection
+                    0.02,  # Reduced from 0.1 to 0.02 for finer collision detection
                     False  # Enable collision checking
                 )
 
@@ -386,14 +402,16 @@ if __name__ == "__main__":
         # robot_mover.restore_init_joint_c_gazebo()
 
         # Initial and target positions
-        start_position = [0.2, -0.2, 0.5]
-        end_position = [0.40, 0.11, 0.025+0.4]  # Modified to a valid z value
-        target_rpy = [0, 0, np.pi]
+        start_position = [0.40, 0.11, 0.02]
+        end_position = [0.40, 0.11, 0.6]  # Modified to a valid z value
+        target_rpy = [0, np.pi, np.pi]
 
-        # robot_mover.move(end_position, target_rpy)
+        robot_mover.move(start_position, target_rpy, add_privant_table=False)
 
         # rospy.loginfo("Starting grasp approach...")
-        robot_mover.grasp_approach(start_position, end_position, target_rpy)
+        for i in range(10): 
+            robot_mover.grasp_approach(start_position, end_position, target_rpy)
+            robot_mover.grasp_approach(end_position, start_position, target_rpy)
 
 
         # while True:
