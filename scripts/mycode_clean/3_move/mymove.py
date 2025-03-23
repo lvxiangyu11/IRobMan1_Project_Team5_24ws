@@ -188,8 +188,10 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error removing table: {e}")
 
-    def move(self, position, rpy, add_privant_table=True):
+    def move(self, position, rpy, add_privant_table=True, retry_init=False):
+        # retry用于当move失败时，恢复初始状态，再试一次
         """Move the robot based on the target position and orientation"""
+        rnt = True
         try:
             # 防止撞倒其他cube！
             if add_privant_table:
@@ -224,43 +226,55 @@ class MoveRobot:
             plan, _, _, error_code = self.move_group.plan()
             if not plan or error_code.val != 1:  # Success code is 1
                 rospy.logerr("Motion planning failed. No valid plan generated.")
-                self.remove_table("constraint_table")
-                return False
+                rnt = False
 
             # Execute the planned path
             success = self.move_group.go(wait=True)
 
             if not success:
                 rospy.logerr("Move execution failed")
-                self.remove_table("constraint_table")
-                return False
+                rnt = False
 
-            rospy.loginfo(f"Move successful to position: {position} and RPY: {rpy}")
-            self.remove_table("constraint_table")
-            return True
 
         except Exception as e:
             rospy.logerr(f"Error in move operation: {e}")
-            self.remove_table("constraint_table")
-            return False
+            rnt =  False
         finally:
             # Clear targets and stop movement
             self.remove_table("constraint_table")
             self.move_group.stop()
             self.move_group.clear_pose_targets()
 
+        self.remove_table("constraint_table")
+        if rnt == True:
+            rospy.loginfo(f"Move successful to position: {position} and RPY: {rpy}")
+        else:
+            if retry_init:
+                self.restore_init_joint_c_gazebo()
+                print("move 失败，垂死挣扎一次！")
+                rnt = self.move(position, rpy, add_privant_table, retry_init=False) # 只能尝试一次！
+                if rnt == False:
+                    print("你移动了个什么玩意，初始状态也到不了！")
+                    print("move的position, rpy 为", position, rpy, " 自己debug去吧！")
+                else:
+                    print("move垂死挣扎成功了，niubi!")
+            
+        return rnt
+        
 
-    def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10):
+
+    def grasp_approach(self, start_position, end_position, rpy, z_min=0.001, max_retries=10, retry_init=False):
         """
         Approach the target position from the starting position while maintaining the end-effector's orientation.
         Use MoveIt's computeCartesianPath for Cartesian path planning.
         If path planning fails, retry up to max_retries times.
         """
+        rnt = True
         try:
             # Change: Add z_min checks for start_position and end_position to prevent low movements near walls
             if start_position[2] < z_min or end_position[2] < z_min:
                 rospy.logerr("Start or end position violates z_min constraint")
-                return False
+                rnt = False
 
             # Convert RPY (Roll, Pitch, Yaw) to quaternion
             quaternion = quaternion_from_euler(rpy[0], rpy[1], rpy[2])
@@ -296,7 +310,7 @@ class MoveRobot:
                 # Change: Reduce step size for better collision checking with walls
                 (plan, fraction) = self.move_group.compute_cartesian_path(
                     waypoints,  # List of waypoints
-                    0.02,  # Reduced from 0.1 to 0.02 for finer collision detection
+                    0.01,  # Reduced from 0.1 to 0.02 for finer collision detection
                     False  # Enable collision checking
                 )
 
@@ -308,7 +322,7 @@ class MoveRobot:
                     rospy.logwarn(f"Path planning succeeded for only {fraction * 100:.2f}% of the path")
                     if attempt == max_retries - 1:
                         rospy.logerr("Maximum retries reached. Path planning failed.")
-                        return False
+                        rnt = False
                     rospy.loginfo("Retrying path planning...")
             self.target_broadcaster.update_target(end_position, rpy)
 
@@ -325,17 +339,29 @@ class MoveRobot:
                 if success:
                     rospy.loginfo("Grasp approach executed successfully.")
                 else:
-                    rospy.logwarn("Grasp approach execution failed.")
-                    return False
+                    rospy.logwarn("Grasp approach execution failed.")                
+                    rnt = False
+
             else:
                 rospy.logerr("Path planning failed after multiple retries.")
-                return False
-
-            return success
+                rnt = False
+            rnt = success
 
         except Exception as e:
             rospy.logerr(f"Exception in grasp_approach method: {e}")
-            return False
+            rnt = False
+        
+        if retry_init and rnt == False:
+            self.restore_init_joint_c_gazebo()
+            print("approach 失败，垂死挣扎一次！")
+            rnt = self.grasp_approach(start_position, end_position, rpy, z_min, max_retries, retry_init=False) # 只能尝试一次！
+            if rnt == False:
+                print("你移动了个什么玩意，初始状态也到不了！")
+                print("approach的start_position, end_position, rpy 为", start_position, end_position, rpy, " 自己debug去吧！")
+            else:
+                print("垂死挣扎成功了，niubi!")
+
+        return rnt
 
     def get_current_pose(self):
         """Get the current position and orientation of the end effector"""
@@ -405,9 +431,11 @@ if __name__ == "__main__":
         start_position = [0.40, 0.11, 0.02]
         end_position = [0.40, 0.11, 0.6]  # Modified to a valid z value
         target_rpy = [0, np.pi, np.pi]
+        # robot_mover.move(start_position, target_rpy, add_privant_table=False)
 
-        robot_mover.move(start_position, target_rpy, add_privant_table=False)
-
+        position = [0.6, -0.14, 0.23] 
+        rpy = [0, 3.141592653589793, 0.7853981633974483]
+        robot_mover.move(start_position, target_rpy, add_privant_table=False, retry_init=True)
         # rospy.loginfo("Starting grasp approach...")
         for i in range(10): 
             robot_mover.grasp_approach(start_position, end_position, target_rpy)

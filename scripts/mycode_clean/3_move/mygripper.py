@@ -24,7 +24,7 @@ class MyGripper:
         self.move_client.wait_for_server()
         rospy.loginfo("Gripper action servers ready.")
 
-    def close(self, width=0.04, inner=0.02, outer=0.02, speed=0.1, force=1.0):
+    def close(self, width=0.04, inner=0.02, outer=0.02, speed=0.1, force=10.0):
         """
         Close the gripper to grasp an object
         :param width: Grasp width (m)
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         gripper = MyGripper()
 
         rospy.loginfo("Closing gripper...")
-        gripper.close(width=0.04, inner=0.02, outer=0.02, speed=0.1, force=1.0)
+        gripper.close(width=0.04, inner=0.02, outer=0.02, speed=0.1, force=10.0)
 
         rospy.loginfo("Opening gripper...")
         gripper.open(width=0.08, speed=0.1)

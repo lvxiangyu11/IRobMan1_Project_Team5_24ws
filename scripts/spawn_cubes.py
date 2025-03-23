@@ -119,8 +119,8 @@ cube_urdf="""
           -->
           <friction>
             <ode>
-              <mu>10</mu>
-              <mu2>10</mu2>
+              <mu>100000</mu>
+              <mu2>100000</mu2>
               <fdir1>0 0 0</fdir1>
               <slip1>0</slip1>
               <slip2>0</slip2>
@@ -189,7 +189,7 @@ xpose=0.5
 ypose=0
 zpose=0
 
-for i in range(10):
+for i in range(27):
   model_name = 'cube_{0}'.format(i)
   try:
     Deleting = rospy.ServiceProxy("gazebo/delete_model", DeleteModel)
@@ -199,32 +199,46 @@ for i in range(10):
   except rospy.ServiceException as e:
     rospy.logwarn(f"Failed to delete model {model_name}, it might not exist: {e}")
 
-offset = 0.06
+offset = 0.10
 for i in range(10):
   print("create_cubes:", i)
-  position=[xpose + random.uniform(*table_xlim),
-            ypose + random.uniform(*table_ylim),
-            zpose + random.uniform(*table_zlim)
-  ]
-  orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
-  # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-0.1,0.1)]
-  # position=[xpose+0.10 ,
-  #           ypose+ i*offset-0.5,
-  #           zpose
+  # position=[xpose + random.uniform(*table_xlim),
+  #           ypose + random.uniform(*table_ylim),
+  #           zpose + random.uniform(*table_zlim)
   # ]
-  # orientation=[0, 0, -np.pi/2]
+  # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
+  orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-0.1,0.1)]
+  position=[xpose+0.14 ,
+            ypose+ i*offset-0.4,
+            zpose
+  ]
+  orientation=[0, 0, -np.pi/2]
   spawn(i, position, orientation)
 
-# for i in range(14):
-#   print("create_cubes:", (i+14))
+# for i in range(9):
+#   print("create_cubes:", (i+5))
+#   # position=[xpose + random.uniform(*table_xlim),
+#   #           ypose + random.uniform(*table_ylim),
+#   #           zpose + random.uniform(*table_zlim)
+#   # ]
+#   # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
+#   position=[xpose +0.07 ,
+#             ypose+ i*offset-0.4,
+#             zpose
+#   ]
+#   orientation=[0, 0, -np.pi/2]
+#   spawn((i+9), position, orientation)
+
+# for i in range(8):
+#   print("create_cubes:", (i+18))
 #   # position=[xpose + random.uniform(*table_xlim),
 #   #           ypose + random.uniform(*table_ylim),
 #   #           zpose + random.uniform(*table_zlim)
 #   # ]
 #   # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
 #   position=[xpose ,
-#             ypose+ i*offset-0.5,
+#             ypose+ i*offset-0.4,
 #             zpose
 #   ]
 #   orientation=[0, 0, -np.pi/2]
-#   spawn((i+14), position, orientation)
+#   spawn((i+18), position, orientation)
