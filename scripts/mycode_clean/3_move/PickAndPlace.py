@@ -8,8 +8,8 @@ import time
 import numpy as np
 
 
-SAFE_POSITION = [0.50, -0.3, 0.02]
-SAFE_ORIENTATION = [0, np.pi, np.pi]
+SAFE_POSITION = [0.50, -0.3, 0.025]
+SAFE_ORIENTATION = [0, np.pi, -np.pi]
 RETRAY_STEPS = 2
 
 class PickAndPlace:
@@ -55,24 +55,25 @@ class PickAndPlace:
                 safe_position_high = self._calculate_approach_position(SAFE_POSITION)
                 self.robot_mover.move(safe_position_high, SAFE_ORIENTATION, retry_init=True)
                 # self.robot_mover.move([a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.2])], SAFE_POSITION, retry_init=True)
-                self.robot_mover.grasp_approach(safe_position_high, [a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.025])], SAFE_ORIENTATION, retry_init=True ) # 留点位置，防止撞
+                self.robot_mover.grasp_approach(safe_position_high, [a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.020])], SAFE_ORIENTATION, retry_init=True ) # 留点位置，防止撞
                 time.sleep(0.4)
                 self.gripper.open(width=0.08, speed=0.1)
                 self.robot_mover.grasp_approach([a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.025])], safe_position_high, SAFE_ORIENTATION, retry_init=True ) # 提起来换方向
                 SAFE_NEXT_ORIENTATION = [a + b for a, b in zip(SAFE_ORIENTATION, [0, 0, np.pi/2])]
-                self.robot_mover.move(safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True)
+                self.robot_mover.move(safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True, restore_init_joint_c_gazebo = False)
                 self.robot_mover.grasp_approach(safe_position_high, SAFE_POSITION, SAFE_NEXT_ORIENTATION, retry_init=True ) # 下去抓起来
                 self.gripper.close(width=0.04, inner=0.02, outer=0.02, speed=0.1, force=20.0)
                 for i in range(RETRAY_STEPS-1): # 再多试几次
                     self.gripper.open(width=0.08, speed=0.1)
                     self.robot_mover.grasp_approach(SAFE_POSITION,safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True ) # 提起来
                     SAFE_NEXT_ORIENTATION = [a + b for a, b in zip(SAFE_NEXT_ORIENTATION, [0, 0, np.pi/2])]
-                    self.robot_mover.move(safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True)
+                    self.robot_mover.move(safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True, restore_init_joint_c_gazebo = False)
                     self.robot_mover.grasp_approach(safe_position_high, SAFE_POSITION, SAFE_NEXT_ORIENTATION, retry_init=True ) # 下去抓起来
                     self.gripper.close(width=0.04, inner=0.02, outer=0.02, speed=0.1, force=20.0)
-                self.robot_mover.grasp_approach(SAFE_POSITION, safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True ) # 下去抓起来
                 
-
+            # debug
+            # self.robot_mover.gazebo_init_joints_c()
+            
             # Move to a higher position for placing the object
             high_place_pos = self._calculate_approach_position(place_pos)
             # self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
@@ -105,6 +106,9 @@ class PickAndPlace:
         approach_pos = list(pos)
         approach_pos[2] += self.approach_distance
         return approach_pos
+    
+    def restore_perception_joint_c(self):
+        self.robot_mover.restore_perception_joint_c()
 
 
 def test():

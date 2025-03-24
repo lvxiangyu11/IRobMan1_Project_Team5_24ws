@@ -98,8 +98,8 @@ class PointCloudSaver:
 
         # Get transform
         # TODO: point cloud right
-        transform = self.get_transform('world', 'left_camera_link_optical') # in simulator
-        # transform = self.get_transform("world", "zed2_left_camera_frame")
+        # transform = self.get_transform('world', 'left_camera_link_optical') # in simulator
+        transform = self.get_transform("world", "zed2_left_camera_frame")
         # transform = self.get_transform('zed2_left_camera_optical_frame', 'zed2_left_camera_frame')
         # transform2 = self.get_transform('world', 'zed2_left_camera_optical_frame')
         if transform is None:

@@ -98,15 +98,15 @@ class MoveRobot:
             self.group_name = "panda_manipulator"  # Adjust according to your robot
             self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
             self.add_table()
-            self.add_wall(wall_name="wall_right", wall_position=[0.0, 0.8, 0.0], theta=-np.pi / 4)
-            self.add_wall(wall_name="wall_left", wall_position=[0.0, -0.8, 0.0], theta=np.pi / 4)
+            self.add_wall(wall_name="wall_right", wall_position=[0.4, 0.8, 0.0], theta=-np.pi / 4)
+            self.add_wall(wall_name="wall_left", wall_position=[0.4, -0.8, 0.0], theta=np.pi / 4)
             rospy.loginfo("MoveRobot initialized successfully.")
             self.init_joint_values = self.get_current_joint_values()
         except Exception as e:
             rospy.logerr(f"Error initializing MoveRobot: {e}")
             raise
         self.gazebo_init_joints_c = [0.00020990855484193105, -0.7795008908903167, 0.00010624718470086947, -2.3667376031479828, -0.0002316322324373843, 1.573599783202095, 0.7853073403622508]
-        
+        self.perception_joints_c = [0.0029251385294057596, 0.0004281890269406817, 0.005535905623257187, -2.0117174447985042, -0.0008059998712783183, 1.9948791112357152, 0.7950330800764779]
         # 初始化TargetFrameBroadcaster
         self.target_broadcaster = TargetFrameBroadcaster(reference_frame="world", target_frame="target_frame")
 
@@ -188,11 +188,14 @@ class MoveRobot:
         except Exception as e:
             rospy.logerr(f"Error removing table: {e}")
 
-    def move(self, position, rpy, add_privant_table=True, retry_init=False):
+    def move(self, position, rpy, add_privant_table=True, retry_init=False, restore_init_joint_c_gazebo=True):
         # retry用于当move失败时，恢复初始状态，再试一次
         """Move the robot based on the target position and orientation"""
         rnt = True
         try:
+            # debug 
+            if restore_init_joint_c_gazebo:
+                self.restore_init_joint_c_gazebo()
             # 防止撞倒其他cube！
             if add_privant_table:
                 self.add_table("constraint_table", 0.06)
@@ -217,8 +220,8 @@ class MoveRobot:
             # Set planning parameters
             self.move_group.set_planning_time(5.0)
             self.move_group.set_num_planning_attempts(30)
-            self.move_group.set_max_velocity_scaling_factor(1)
-            self.move_group.set_max_acceleration_scaling_factor(1)
+            self.move_group.set_max_velocity_scaling_factor(0.2)
+            self.move_group.set_max_acceleration_scaling_factor(0.2)
 
             # Set target position and plan the path
             self.move_group.set_pose_target(pose_goal)
@@ -421,11 +424,83 @@ class MoveRobot:
         self.move_group.set_joint_value_target(self.gazebo_init_joints_c)
         success = self.move_group.go(wait=True)
 
+    def restore_perception_joint_c(self):
+        # 恢复perception位置
+        self.move_group.set_joint_value_target(self.perception_joints_c)
+        success = self.move_group.go(wait=True)
+
+    def add_cube(self, pos, ori, name):
+        """
+        添加一个立方体到机器人世界
+        立方体的尺寸为 0.045 x 0.045 x 0.045 米。
+        
+        参数:
+        pos (tuple): 立方体的位置, 格式为 (x, y, z)
+        ori (tuple): 立方体的方向, 格式为 (roll, pitch, yaw)
+        name (str): 立方体的名称
+
+        返回:
+        None
+        """
+        try:
+            # 立方体的尺寸为0.045 x 0.045 x 0.045米
+            cube_size = [0.045, 0.045, 0.045]
+
+            # 设置立方体的位置
+            cube_pose = geometry_msgs.msg.Pose()
+            cube_pose.position.x = pos[0]
+            cube_pose.position.y = pos[1]
+            cube_pose.position.z = pos[2]
+
+            # 将欧拉角转为四元数
+            quaternion = quaternion_from_euler(ori[0], ori[1], ori[2])
+            cube_pose.orientation.x = quaternion[0]
+            cube_pose.orientation.y = quaternion[1]
+            cube_pose.orientation.z = quaternion[2]
+            cube_pose.orientation.w = quaternion[3]
+
+            # 创建立方体的形状
+            cube = shape_msgs.msg.SolidPrimitive()
+            cube.type = shape_msgs.msg.SolidPrimitive.BOX
+            cube.dimensions = cube_size
+
+            # 创建立方体的碰撞对象
+            cube_object = moveit_commander.CollisionObject()
+            cube_object.header.frame_id = self.move_group.get_planning_frame()
+            cube_object.id = name
+            cube_object.primitives.append(cube)
+            cube_object.primitive_poses.append(cube_pose)
+
+            # 将立方体添加到场景
+            planning_scene = moveit_commander.PlanningSceneInterface()
+            planning_scene.add_object(cube_object)
+
+            rospy.loginfo(f"立方体 '{name}' 添加到场景，位置: {pos}, 姿态: {ori}")
+        except Exception as e:
+            rospy.logerr(f"添加立方体失败: {e}")
+
+    def delete_cube(self, name):
+        """
+        删除指定名称的立方体
+        
+        参数:
+        name (str): 要删除的立方体名称
+        
+        返回:
+        None
+        """
+        try:
+            planning_scene = moveit_commander.PlanningSceneInterface()
+            planning_scene.remove_world_object(name)  # 通过名称删除立方体
+            rospy.loginfo(f"立方体 '{name}' 已从场景中删除。")
+        except Exception as e:
+            rospy.logerr(f"删除立方体失败: {e}")
+
 
 if __name__ == "__main__":
     try:
         robot_mover = MoveRobot()
-        # robot_mover.restore_init_joint_c_gazebo()
+        robot_mover.restore_init_joint_c_gazebo()
 
         # Initial and target positions
         start_position = [0.40, 0.11, 0.02]
@@ -435,16 +510,21 @@ if __name__ == "__main__":
 
         position = [0.61, -0.41, 0.2] 
         rpy = [0.1, np.pi+0.1, np.pi+0.1]
-        robot_mover.move(position, rpy, add_privant_table=False, retry_init=True)
+        # robot_mover.move(position, rpy, add_privant_table=False, retry_init=True)
         # rospy.loginfo("Starting grasp approach...")
         for i in range(0): 
             robot_mover.grasp_approach(start_position, end_position, target_rpy)
             robot_mover.grasp_approach(end_position, start_position, target_rpy)
-
+        # robot_mover.restore_init_joint_c_gazebo()
 
         # while True:
         #     print("debuging! terminate the process youself per hand!")
         #     pass
+        tower_base = [0.50, 0.3, 0.021]
+        tower_orientation = [0, np.pi, -np.pi]
+
+        # robot_mover.add_cube(tower_base, tower_orientation, "cube_"+str(1))
+        robot_mover.delete_cube("cube_"+str(1))
 
     except rospy.ROSInterruptException:
         pass
