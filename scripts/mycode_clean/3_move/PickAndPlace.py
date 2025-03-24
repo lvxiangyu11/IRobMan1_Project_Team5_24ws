@@ -13,11 +13,7 @@ SAFE_ORIENTATION = [0, np.pi, np.pi]
 RETRAY_STEPS = 2
 
 class PickAndPlace:
-<<<<<<< HEAD
-    def __init__(self, approach_distance=0.15, restart=False):
-=======
     def __init__(self, approach_distance=0.20, restart=False):
->>>>>>> syn
         self.robot_mover = MoveRobot()
         self.gripper = MyGripper()
         self.approach_distance = approach_distance
@@ -31,19 +27,6 @@ class PickAndPlace:
         try:
             # Open the gripper
             self.gripper.open(width=0.08, speed=0.1)
-<<<<<<< HEAD
-            time.sleep(0.5)
-
-            # Move to a higher position above the object
-            high_pick_pos = self._calculate_approach_position(pick_pos)
-            self.robot_mover.move(high_pick_pos, pick_rpy)
-            time.sleep(0.2)
-
-            # Move to the object's position
-            self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy)
-            # self.robot_mover.move(pick_pos, pick_rpy, 0.2)
-            time.sleep(0.3)
-=======
             # time.sleep(0.2)
 
             # Move to a higher position above the object
@@ -55,7 +38,6 @@ class PickAndPlace:
             self.robot_mover.grasp_approach(high_pick_pos, pick_pos, pick_rpy, retry_init=True)
             # self.robot_mover.move(pick_pos, pick_rpy, retry_init=True)
             # time.sleep(0.2)
->>>>>>> syn
 
             # Close the gripper
             self.gripper.close(width=0.04, inner=0.02, outer=0.02, speed=0.1, force=20.0)
@@ -94,21 +76,12 @@ class PickAndPlace:
             # Move to a higher position for placing the object
             high_place_pos = self._calculate_approach_position(place_pos)
             # self.robot_mover.grasp_approach(high_pick_up_pos, high_place_pos, pick_rpy)
-<<<<<<< HEAD
-            self.robot_mover.move(high_place_pos, place_rpy)
-            time.sleep(0.5)
-
-            # Move to the place position
-            self.robot_mover.grasp_approach(high_place_pos, place_pos, place_rpy)
-            # self.robot_mover.move(place_pos, place_rpy)
-=======
             self.robot_mover.move(high_place_pos, place_rpy, retry_init=True)
             # time.sleep(0.5)
 
             # Move to the place position
             self.robot_mover.grasp_approach(high_place_pos, place_pos, place_rpy, retry_init=True)
             # self.robot_mover.move(place_pos, place_rpy, retry_init=True)
->>>>>>> syn
             time.sleep(0.5)
 
             # Open the gripper to release the object
