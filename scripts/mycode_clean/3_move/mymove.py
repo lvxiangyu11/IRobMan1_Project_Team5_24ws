@@ -303,14 +303,14 @@ class MoveRobot:
             waypoints = [start_pose, end_pose]
 
             self.move_group.set_planning_time(5.0)
-
+            success = False
             # Retry logic for planning
             for attempt in range(max_retries):
                 rospy.loginfo(f"Attempt {attempt + 1} to plan Cartesian path...")
                 # Change: Reduce step size for better collision checking with walls
                 (plan, fraction) = self.move_group.compute_cartesian_path(
                     waypoints,  # List of waypoints
-                    0.01,  # Reduced from 0.1 to 0.02 for finer collision detection
+                    0.001,  # Reduced from 0.1 to 0.02 for finer collision detection
                     False  # Enable collision checking
                 )
 
@@ -433,11 +433,11 @@ if __name__ == "__main__":
         target_rpy = [0, np.pi, np.pi]
         # robot_mover.move(start_position, target_rpy, add_privant_table=False)
 
-        position = [0.6, -0.14, 0.23] 
-        rpy = [0, 3.141592653589793, 0.7853981633974483]
-        robot_mover.move(start_position, target_rpy, add_privant_table=False, retry_init=True)
+        position = [0.61, -0.41, 0.2] 
+        rpy = [0.1, np.pi+0.1, np.pi+0.1]
+        robot_mover.move(position, rpy, add_privant_table=False, retry_init=True)
         # rospy.loginfo("Starting grasp approach...")
-        for i in range(10): 
+        for i in range(0): 
             robot_mover.grasp_approach(start_position, end_position, target_rpy)
             robot_mover.grasp_approach(end_position, start_position, target_rpy)
 

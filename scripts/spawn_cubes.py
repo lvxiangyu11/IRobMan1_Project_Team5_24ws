@@ -31,7 +31,8 @@ cube_sdf="""
         <contact>
           <ode>
             <max_vel>0</max_vel>
-            <min_depth>0.003</min_depth>
+            # <min_depth>0.003</min_depth>
+            <min_depth>0.01</min_depth>
           </ode>
         </contact>
         <!--NOTE: Uses dynamic friction of brick on a wood surface
@@ -41,7 +42,7 @@ cube_sdf="""
           <ode>
             <mu>10</mu>
             <mu2>10</mu2>
-            <fdir1>0 0 0</fdir1>
+            <fdir1>1 0 0</fdir1>
             <slip1>0</slip1>
             <slip2>0</slip2>
           </ode>
@@ -90,7 +91,8 @@ cube_urdf="""
     <link name="%NAME%">
         <inertial>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <mass value="0.066" />
+          # <mass value="0.066" />
+          <mass value="1" />
           <inertia ixx="0.0000221859" ixy="0.0" ixz="0.0" iyy="0.0000221859" iyz="0.0" izz="0.0000221859" />
         </inertial>
         <collision>
@@ -199,7 +201,7 @@ for i in range(27):
   except rospy.ServiceException as e:
     rospy.logwarn(f"Failed to delete model {model_name}, it might not exist: {e}")
 
-offset = 0.10
+offset = 0.08
 for i in range(10):
   print("create_cubes:", i)
   # position=[xpose + random.uniform(*table_xlim),
@@ -208,8 +210,8 @@ for i in range(10):
   # ]
   # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
   orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-0.1,0.1)]
-  position=[xpose+0.14 ,
-            ypose+ i*offset-0.4,
+  position=[xpose+0.10 ,
+            ypose+ i*offset-0.35,
             zpose
   ]
   orientation=[0, 0, -np.pi/2]
@@ -222,7 +224,7 @@ for i in range(10):
 #   #           zpose + random.uniform(*table_zlim)
 #   # ]
 #   # orientation=[random.uniform(-1.5,1.5), random.uniform(-1.5,1.5), random.uniform(-1.5,1.5)]
-#   position=[xpose +0.07 ,
+#   position=[xpose +0.05 ,
 #             ypose+ i*offset-0.4,
 #             zpose
 #   ]
