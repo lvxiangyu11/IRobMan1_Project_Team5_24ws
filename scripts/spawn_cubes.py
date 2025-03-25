@@ -201,7 +201,7 @@ for i in range(27):
   except rospy.ServiceException as e:
     rospy.logwarn(f"Failed to delete model {model_name}, it might not exist: {e}")
 
-offset = 0.08
+offset = 0.10
 for i in range(10):
   print("create_cubes:", i)
   # position=[xpose + random.uniform(*table_xlim),
@@ -214,7 +214,7 @@ for i in range(10):
             ypose+ i*offset-0.35,
             zpose
   ]
-  orientation=[0, 0, -np.pi/2]
+  orientation=[0, 0, -np.pi/4]
   spawn(i, position, orientation)
 
 # for i in range(9):
