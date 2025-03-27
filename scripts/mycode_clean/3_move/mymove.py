@@ -499,8 +499,12 @@ class MoveRobot:
 
 if __name__ == "__main__":
     try:
+
         robot_mover = MoveRobot()
         robot_mover.restore_init_joint_c_gazebo()
+        for i in range(11):
+            robot_mover.delete_cube("cube_"+str(i))
+
 
         # Initial and target positions
         start_position = [0.40, 0.11, 0.02]
@@ -524,7 +528,6 @@ if __name__ == "__main__":
         tower_orientation = [0, np.pi, -np.pi]
 
         # robot_mover.add_cube(tower_base, tower_orientation, "cube_"+str(1))
-        robot_mover.delete_cube("cube_"+str(1))
 
     except rospy.ROSInterruptException:
         pass

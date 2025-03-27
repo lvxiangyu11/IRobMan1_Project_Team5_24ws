@@ -55,10 +55,10 @@ class PickAndPlace:
                 safe_position_high = self._calculate_approach_position(SAFE_POSITION)
                 self.robot_mover.move(safe_position_high, SAFE_ORIENTATION, retry_init=True)
                 # self.robot_mover.move([a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.2])], SAFE_POSITION, retry_init=True)
-                self.robot_mover.grasp_approach(safe_position_high, [a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.020])], SAFE_ORIENTATION, retry_init=True ) # 留点位置，防止撞
+                self.robot_mover.grasp_approach(safe_position_high, [a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.005])], SAFE_ORIENTATION, retry_init=True ) # 留点位置，防止撞
                 time.sleep(0.4)
                 self.gripper.open(width=0.08, speed=0.1)
-                self.robot_mover.grasp_approach([a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.025])], safe_position_high, SAFE_ORIENTATION, retry_init=True ) # 提起来换方向
+                self.robot_mover.grasp_approach([a + b for a, b in zip(SAFE_POSITION, [0, 0, 0.020])], safe_position_high, SAFE_ORIENTATION, retry_init=True ) # 提起来换方向
                 SAFE_NEXT_ORIENTATION = [a + b for a, b in zip(SAFE_ORIENTATION, [0, 0, np.pi/2])]
                 self.robot_mover.move(safe_position_high, SAFE_NEXT_ORIENTATION, retry_init=True, restore_init_joint_c_gazebo = False)
                 self.robot_mover.grasp_approach(safe_position_high, SAFE_POSITION, SAFE_NEXT_ORIENTATION, retry_init=True ) # 下去抓起来
@@ -118,7 +118,7 @@ def test():
     pick_pos = [0.4, 0, 0.13]  # Initial position of the object
     pick_rpy = [0, np.pi, np.pi / 2 + np.pi / 4]
 
-    place_pos = [0.5, 0.1, 0.13]  # Target position of the object
+    place_pos = [0.6, 0.1, 0.13]  # Target position of the object
     place_rpy = [0, np.pi, np.pi / 2 + np.pi / 4]
     try:
         for i in range(100):
@@ -140,7 +140,7 @@ def peral():
     pick_place = PickAndPlace(approach_distance=0.3)
     pick_pos_ = [0.61, -0.01, 0.02] 
     pick_rpy = [0.1, np.pi+0.1, np.pi+0.1]
-    place_pose = [0.3, 0.0, 0.03] 
+    place_pose = [0.3, 0.0, 0.025] 
     place_rpy = [3.141592653589793, 0.0, -1.5707963267948966]
 
     pick_place.pick_and_place(
