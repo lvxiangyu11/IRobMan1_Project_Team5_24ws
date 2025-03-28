@@ -1,0 +1,1 @@
+in this folder, we intergrate a method to generate fake dataset for yolo classify  
