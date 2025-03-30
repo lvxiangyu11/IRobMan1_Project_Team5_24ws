@@ -3,7 +3,12 @@
 ## Overview
 
 This project develops a pipeline to identify cubes and implement a pick-and-place system. The pipeline consists of two main parts: **Perception** and **Motion**. The Perception part identifies and processes the cubes from point clouds, while the Motion part handles the robotic arm's movement to perform the pick-and-place tasks.
-
+<p align="center">
+  <img src="images/pascal_real.png" width="300"/>
+</p>
+<p align="center">
+  <img src="images/simple_tower_real.png" width="300"/>
+</p>
 ## Project Structure
 
 The repository is divided into the following sections:
