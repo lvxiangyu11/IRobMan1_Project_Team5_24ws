@@ -9,7 +9,6 @@ This project develops a pipeline to identify cubes and implement a pick-and-plac
 <p align="center">
   <img src="images/simple_tower_real.png" width="300"/>
 </p>
-<script src="https://gist.github.com/aoxu/7783280.js"></script>
 
 [![Final Demo](https://img.youtube.com/vi/1B54wzQt1AM/0.jpg)](https://www.youtube.com/watch?v=1B54wzQt1AM)
 
